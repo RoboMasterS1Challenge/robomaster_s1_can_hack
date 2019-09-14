@@ -82,12 +82,18 @@ typedef struct CANRxMsg
 } CANRxMsg;
 
 #define BUFFER_SIZE 1024
-volatile CANRxMsg RxMsgBuffer1[BUFFER_SIZE];
+volatile CANRxMsg rx_msg_buffer1[BUFFER_SIZE];
 volatile int buffer_rp1;
 volatile int buffer_wp1;
-volatile CANRxMsg RxMsgBuffer2[BUFFER_SIZE];
+volatile CANRxMsg rx_msg_buffer2[BUFFER_SIZE];
 volatile int buffer_rp2;
 volatile int buffer_wp2;
+
+volatile uint8_t can_command_buffer[BUFFER_SIZE];
+volatile int can_command_buffer_rp;
+volatile int can_command_buffer_wp;
+
+
 
 /* USER CODE END PV */
 
@@ -98,9 +104,9 @@ static void MX_CAN1_Init(void);
 static void MX_CAN2_Init(void);
 /* USER CODE BEGIN PFP */
 static void CAN_FilterConfig(void);
-extern void UdpSendData(uint8_t id, uint8_t in_data);
-extern void StartUdp(vBasicTFTPServer, pvParameters);
-
+extern void UdpSendData(uint8_t id, uint8_t* send_data, uint8_t send_data_size);
+extern void StartUdp(uint8_t* ip_addr);
+extern int ParseCanData(uint8_t id, uint8_t* in_data, uint8_t in_data_size, uint8_t out_data[], uint8_t* out_data_size);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -190,37 +196,76 @@ int main(void)
     buffer_wp1 = 0;
     buffer_rp2 = 0;
     buffer_wp2 = 0;
+    can_command_buffer_rp = 0;
+    can_command_buffer_wp = 0;
 
-    uint8_t ip_addr[] = {192, 168, 23, 255};
-    StartUdp(ip_addr);
+    uint8_t send_ip_addr[] = {192, 168, 23, 255};
+    StartUdp(send_ip_addr);
 
     CANRxMsg msg;
+    uint8_t send_data[255];
+    uint8_t send_data_size = 0;
     int i = 0;
+    int ret =0;
     while (1)
     {
+    	// 0x201 Intelligent Controller Command
         if (buffer_rp1 != buffer_wp1)
         {
-            msg = RxMsgBuffer1[buffer_rp1];
-            for (i = 0; i < msg.dlc; i++)
-            {
-                UdpSendData(msg.can_id, msg.data[i]);
-            }
+            msg = rx_msg_buffer1[buffer_rp1];
+            ret = ParseCanData(msg.can_id, msg.data, msg.dlc, send_data, &send_data_size);
             buffer_rp1++;
             buffer_rp1 %= BUFFER_SIZE;
+            if(ret)
+            {
+                //UdpSendData(msg.can_id, send_data, send_data_size);
+                for(i=0;i<send_data_size;i++){
+                	can_command_buffer[can_command_buffer_wp] = send_data[i];
+                	can_command_buffer_wp++;
+                	can_command_buffer_wp %= BUFFER_SIZE;
+                }
+            }
         }
 
+        // others
         if (buffer_rp2 != buffer_wp2)
         {
-            msg = RxMsgBuffer2[buffer_rp2];
-            for (i = 0; i < msg.dlc; i++)
-            {
-                UdpSendData(msg.can_id, msg.data[i]);
-            }
+            msg = rx_msg_buffer2[buffer_rp2];
+            ret = ParseCanData(msg.can_id, msg.data, msg.dlc, send_data, &send_data_size);
             buffer_rp2++;
             buffer_rp2 %= BUFFER_SIZE;
+            if(ret)
+            {
+                UdpSendData(msg.can_id, send_data, send_data_size);
+            }
         }
 
-        //HAL_Delay(1);
+        // Transmit CAN Command
+        if (can_command_buffer_rp != can_command_buffer_wp)
+        {
+        	int can_command_buffer_size = (can_command_buffer_wp - can_command_buffer_rp + BUFFER_SIZE) % BUFFER_SIZE;
+        	if(can_command_buffer_size >= 8){
+    			TxHeader2.DLC = 8;
+        	}else{
+				TxHeader2.DLC = can_command_buffer_size;
+        	}
+			TxHeader2.StdId = RxHeader1.StdId;
+			TxHeader2.ExtId = RxHeader1.ExtId;
+			TxHeader2.RTR = CAN_RTR_DATA;
+			TxHeader2.IDE = CAN_ID_STD;
+			TxHeader2.TransmitGlobalTime = DISABLE;
+			for(i=0;i<TxHeader2.DLC;i++){
+				TxData2[i] = can_command_buffer[(can_command_buffer_rp+i)%BUFFER_SIZE];
+			}
+        	/* Start Transmission process */
+        	int ret = HAL_CAN_AddTxMessage(&hcan2, &TxHeader2, TxData2, &TxMailbox2);
+        	if (ret == HAL_OK){
+        		can_command_buffer_rp += TxHeader2.DLC;
+        		can_command_buffer_rp %= BUFFER_SIZE;
+        	}
+        }
+
+
         /* USER CODE END WHILE */
 
         /* USER CODE BEGIN 3 */
@@ -483,29 +528,27 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
     {
         if (RxHeader1.StdId == 0x201)
         {
-            TxHeader2.StdId = RxHeader1.StdId;
-            TxHeader2.ExtId = RxHeader1.ExtId;
-            TxHeader2.RTR = CAN_RTR_DATA;
-            TxHeader2.IDE = CAN_ID_STD;
-            TxHeader2.DLC = RxHeader1.DLC;
-            TxHeader2.TransmitGlobalTime = DISABLE;
-            memcpy(TxData2, RxData1, RxHeader1.DLC);
+//            TxHeader2.StdId = RxHeader1.StdId;
+//            TxHeader2.ExtId = RxHeader1.ExtId;
+//            TxHeader2.RTR = CAN_RTR_DATA;
+//            TxHeader2.IDE = CAN_ID_STD;
+//            TxHeader2.DLC = RxHeader1.DLC;
+//            TxHeader2.TransmitGlobalTime = DISABLE;
+//            memcpy(TxData2, RxData1, RxHeader1.DLC);
 
-            /* Start the Transmission process */
-            while (HAL_CAN_AddTxMessage(&hcan2, &TxHeader2, TxData2, &TxMailbox2) != HAL_OK)
-            {
-                // wait
-            }
-            if (RxHeader1.StdId == 0x201)
-            {
-                CANRxMsg msg;
-                msg.can_id = ID_0x201;
-                msg.dlc = RxHeader1.DLC;
-                memcpy(msg.data, RxData1, RxHeader1.DLC);
-                RxMsgBuffer1[buffer_wp1] = msg;
-                buffer_wp1++;
-                buffer_wp1 %= BUFFER_SIZE;
-            }
+            /* Start Transmission process */
+            //int ret = HAL_CAN_AddTxMessage(&hcan2, &TxHeader2, TxData2, &TxMailbox2);
+//            while (ret != HAL_OK)
+//            {
+//            	ret = HAL_CAN_AddTxMessage(&hcan2, &TxHeader2, TxData2, &TxMailbox2);
+//            }
+			CANRxMsg msg;
+			msg.can_id = ID_0x201;
+			msg.dlc = RxHeader1.DLC;
+			memcpy(msg.data, RxData1, RxHeader1.DLC);
+			rx_msg_buffer1[buffer_wp1] = msg;
+			buffer_wp1++;
+			buffer_wp1 %= BUFFER_SIZE;
         }
     }
 }
@@ -517,29 +560,27 @@ void HAL_CAN_RxFifo0FullCallback(CAN_HandleTypeDef *hcan)
     {
         if (RxHeader1.StdId == 0x201)
         {
-            TxHeader2.StdId = RxHeader1.StdId;
-            TxHeader2.ExtId = RxHeader1.ExtId;
-            TxHeader2.RTR = CAN_RTR_DATA;
-            TxHeader2.IDE = CAN_ID_STD;
-            TxHeader2.DLC = RxHeader1.DLC;
-            TxHeader2.TransmitGlobalTime = DISABLE;
-            memcpy(TxData2, RxData1, RxHeader1.DLC);
+//            TxHeader2.StdId = RxHeader1.StdId;
+//            TxHeader2.ExtId = RxHeader1.ExtId;
+//            TxHeader2.RTR = CAN_RTR_DATA;
+//            TxHeader2.IDE = CAN_ID_STD;
+//            TxHeader2.DLC = RxHeader1.DLC;
+//            TxHeader2.TransmitGlobalTime = DISABLE;
+//            memcpy(TxData2, RxData1, RxHeader1.DLC);
 
-            /* Start the Transmission process */
-            while (HAL_CAN_AddTxMessage(&hcan2, &TxHeader2, TxData2, &TxMailbox2) != HAL_OK)
-            {
-                // wait
-            }
-            if (RxHeader1.StdId == 0x201)
-            {
-                CANRxMsg msg;
-                msg.can_id = ID_0x201;
-                msg.dlc = RxHeader1.DLC;
-                memcpy(msg.data, RxData1, RxHeader1.DLC);
-                RxMsgBuffer1[buffer_wp1] = msg;
-                buffer_wp1++;
-                buffer_wp1 %= BUFFER_SIZE;
-            }
+            /* Start Transmission process */
+            //int ret = HAL_CAN_AddTxMessage(&hcan2, &TxHeader2, TxData2, &TxMailbox2);
+            //            while (ret != HAL_OK)
+            //            {
+            //            	ret = HAL_CAN_AddTxMessage(&hcan2, &TxHeader2, TxData2, &TxMailbox2);
+            //            }
+			CANRxMsg msg;
+			msg.can_id = ID_0x201;
+			msg.dlc = RxHeader1.DLC;
+			memcpy(msg.data, RxData1, RxHeader1.DLC);
+			rx_msg_buffer1[buffer_wp1] = msg;
+			buffer_wp1++;
+			buffer_wp1 %= BUFFER_SIZE;
         }
     }
 }
@@ -565,11 +606,12 @@ void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
             TxHeader1.TransmitGlobalTime = DISABLE;
             memcpy(TxData1, RxData2, RxHeader2.DLC);
 
-            /* Start the Transmission process */
-            while (HAL_CAN_AddTxMessage(&hcan1, &TxHeader1, TxData1, &TxMailbox1) != HAL_OK)
-            {
-                // wait
-            }
+            /* Start Transmission process */
+            int ret = HAL_CAN_AddTxMessage(&hcan1, &TxHeader1, TxData1, &TxMailbox1);
+                        while (ret != HAL_OK)
+                        {
+                        	ret = HAL_CAN_AddTxMessage(&hcan1, &TxHeader1, TxData1, &TxMailbox1);
+                        }
 
             CANRxMsg msg;
             switch (RxHeader2.StdId)
@@ -604,7 +646,7 @@ void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
             }
             msg.dlc = RxHeader2.DLC;
             memcpy(msg.data, RxData2, RxHeader2.DLC);
-            RxMsgBuffer2[buffer_wp2] = msg;
+            rx_msg_buffer2[buffer_wp2] = msg;
             buffer_wp2++;
             buffer_wp2 %= BUFFER_SIZE;
         }
@@ -626,11 +668,12 @@ void HAL_CAN_RxFifo1FullCallback(CAN_HandleTypeDef *hcan)
             TxHeader1.TransmitGlobalTime = DISABLE;
             memcpy(TxData1, RxData2, RxHeader2.DLC);
 
-            /* Start the Transmission process */
-            while (HAL_CAN_AddTxMessage(&hcan1, &TxHeader1, TxData1, &TxMailbox1) != HAL_OK)
-            {
-                // wait
-            }
+            /* Start Transmission process */
+            int ret = HAL_CAN_AddTxMessage(&hcan1, &TxHeader1, TxData1, &TxMailbox1);
+                        while (ret != HAL_OK)
+                        {
+                        	ret = HAL_CAN_AddTxMessage(&hcan1, &TxHeader1, TxData1, &TxMailbox1);
+                        }
 
             CANRxMsg msg;
             switch (RxHeader2.StdId)
@@ -665,7 +708,7 @@ void HAL_CAN_RxFifo1FullCallback(CAN_HandleTypeDef *hcan)
             }
             msg.dlc = RxHeader2.DLC;
             memcpy(msg.data, RxData2, RxHeader2.DLC);
-            RxMsgBuffer2[buffer_wp2] = msg;
+            rx_msg_buffer2[buffer_wp2] = msg;
             buffer_wp2++;
             buffer_wp2 %= BUFFER_SIZE;
         }

@@ -3,6 +3,13 @@
 #include <limits.h> // CHAR_BIT
 #include <stdint.h>
 
+#define CAN_ID_NUM 10
+
+#define BUFFER_SIZE 512
+volatile uint8_t udp_buffer[CAN_ID_NUM][BUFFER_SIZE];
+volatile int udp_buffer_rp[CAN_ID_NUM];
+volatile int udp_buffer_wp[CAN_ID_NUM];
+
 //crc8 generator polynomial: G(x)=x8+x5+x4+1
 const unsigned char CRC8_INIT = 119;
 const unsigned char CRC8_TAB[256] =
@@ -147,4 +154,87 @@ void AppendCRC16CheckSum(uint8_t *pchMessage, uint32_t dwLength)
 	wCRC = GetCRC16CheckSum((uint8_t *)pchMessage, dwLength - 2, CRC_INIT);
 	pchMessage[dwLength - 2] = (uint8_t)(wCRC & 0x00ff);
 	pchMessage[dwLength - 1] = (uint8_t)((wCRC >> 8) & 0x00ff);
+}
+
+
+int ParseCanData(uint8_t id, uint8_t* in_data, uint8_t in_data_size, uint8_t out_data[], uint8_t* out_data_size)
+{
+	int i;
+
+	for(int i=0;i<in_data_size;i++){
+		udp_buffer[id][udp_buffer_wp[id]] = in_data[i];
+		udp_buffer_wp[id]++;
+		udp_buffer_wp[id] %= BUFFER_SIZE;
+	}
+
+	int can_in_buffer_size = (udp_buffer_wp[id] - udp_buffer_rp[id] + BUFFER_SIZE) % BUFFER_SIZE;
+
+	// Data size check
+	if(can_in_buffer_size < 7){
+		return 0;
+	}
+
+	// Search Header
+	int find_flag = 0;
+	for(i = 0; i < can_in_buffer_size - 7; i++){
+		if(udp_buffer[id][(udp_buffer_rp[id]+i)%BUFFER_SIZE]==0x55 && udp_buffer[id][(udp_buffer_rp[id] +i +2)%BUFFER_SIZE]==0x04){
+			find_flag = 1;
+			can_in_buffer_size -= i;
+			udp_buffer_rp[id] += i;
+			udp_buffer_rp[id] %= BUFFER_SIZE;
+			break;
+		}
+	}
+
+	if(find_flag == 0){
+		return 0;
+	}
+
+	// Check data length
+	int send_data_size = udp_buffer[id][(udp_buffer_rp[id]+1)%BUFFER_SIZE];
+	if(send_data_size > can_in_buffer_size)
+	{
+		// Not enough data
+		return 0;
+	}
+
+	// Prepare send data
+	uint8_t* send_data;
+	send_data = (uint8_t*)malloc(sizeof(uint8_t) * send_data_size);
+
+
+	for(i = 0; i < send_data_size; i++){
+		int buffer_p = (udp_buffer_rp[id] + i) % BUFFER_SIZE;
+		send_data[i] = udp_buffer[id][buffer_p];
+	}
+
+	// Check header crc8
+	if(!VerifyCRC8CheckSum(send_data, 4))
+	{
+		// checksum error
+		// skip header
+		udp_buffer_rp[id]++;
+		udp_buffer_rp[id] %= BUFFER_SIZE;
+		free(send_data);
+		return 0;
+	}
+
+	// Check crc16
+	if(!VerifyCRC16CheckSum(send_data, send_data_size))
+	{
+		// checksum error
+		// skip header
+		udp_buffer_rp[id]++;
+		udp_buffer_rp[id] %= BUFFER_SIZE;
+		free(send_data);
+		return 0;
+	}
+
+	memcpy(out_data, send_data, send_data_size);
+	*out_data_size = send_data_size;
+
+	free(send_data);
+	udp_buffer_rp[id] += send_data_size;
+	udp_buffer_rp[id] %= BUFFER_SIZE;
+	return 1;
 }
