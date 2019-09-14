@@ -9,7 +9,7 @@ unsigned int VerifyCRC8CheckSum(unsigned char *pchMessage, unsigned int dwLength
 extern
 uint32_t VerifyCRC16CheckSum(uint8_t *pchMessage, uint32_t dwLength);
 
-#define CAN_ID_NUM 11
+#define CAN_ID_NUM 10
 
 ip4_addr_t forward_ip;
 const uint16_t port_list[CAN_ID_NUM] = {
@@ -17,7 +17,6 @@ const uint16_t port_list[CAN_ID_NUM] = {
 		0x202,
 		0x203,
 		0x204,
-		0x210,
 		0x211,
 		0x212,
 		0x213,
@@ -128,7 +127,7 @@ void UdpRecvData(void *arg, struct udp_pcb *pcb, struct pbuf *p, struct ip_addr 
       }
 }
 
-void StartUdp( vBasicTFTPServer, pvParameters )
+void StartUdp(uint8_t* ip_addr)
 {
 	int i;
 	for(i=0;i<CAN_ID_NUM;i++){
@@ -136,7 +135,7 @@ void StartUdp( vBasicTFTPServer, pvParameters )
 		int port = port_list[i];
 
 		udp_bind(ptel_pcb, IP_ADDR_ANY, port);
-		IP4_ADDR(&forward_ip, 192, 168,   23, 255);
+		IP4_ADDR(&forward_ip, ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3]);
 
 		//udp_recv(ptel_pcb, UdpRecvData, NULL);
 
