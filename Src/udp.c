@@ -27,7 +27,7 @@ const uint16_t port_list[CAN_ID_NUM] = {
 
 struct udp_pcb *broadcast_pcb[CAN_ID_NUM];
 
-#define BUFFER_SIZE 1024
+#define BUFFER_SIZE 4096
 volatile uint8_t can_buffer[CAN_ID_NUM][BUFFER_SIZE];
 volatile int can_buffer_rp[CAN_ID_NUM];
 volatile int can_buffer_wp[CAN_ID_NUM];
@@ -50,7 +50,7 @@ void UdpSendData(uint8_t id, uint8_t in_data)
 	int i;
 	int find_flag = 0;
 	for(i = 0; i < can_in_buffer_size - 7; i++){
-		if(can_buffer[id][can_buffer_rp[id]]==0x55 && can_buffer[id][can_buffer_rp[id]+2]==0x04){
+		if(can_buffer[id][can_buffer_rp[id]]==0x55 && can_buffer[id][(can_buffer_rp[id]+2)%BUFFER_SIZE]==0x04){
 			find_flag = 1;
 			can_in_buffer_size -= i;
 			break;
@@ -64,7 +64,7 @@ void UdpSendData(uint8_t id, uint8_t in_data)
 	}
 
 	// Check data length
-	int send_data_size = can_buffer[id][can_buffer_rp[id]+1];
+	int send_data_size = can_buffer[id][(can_buffer_rp[id]+1)%BUFFER_SIZE];
 	if(send_data_size > can_in_buffer_size)
 	{
 		// Not enough data
