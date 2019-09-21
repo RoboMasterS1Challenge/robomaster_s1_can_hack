@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<launch>
+  <arg name="ns" default="/system"/>
+  <arg name="respawn" default="false"/>
+  <arg name="ip_address" default="192.168.0.255"/>
+  <arg name="debug_print" default="0"/>
+  <group ns="$(arg ns)">
+    <node pkg="ros_robomaster_s1_bridge" type="ros_robomaster_s1_bridge_node" name="ros_robomaster_s1_bridge" respawn="$(arg respawn)" output="screen">
+      <param name="debug_print" value="$(arg debug_print)" />
+      <param name="ip_address" value="$(arg ip_address)" />
+    </node>
+  </group>
+  
+  <arg name="joy_config" default="ps4" />
+  <arg name="joy_dev" default="/dev/input/js0" />
+  <arg name="config_filepath" default="$(find teleop_twist_joy)/config/$(arg joy_config).config.yaml" />
+  
+  <node pkg="joy" type="joy_node" name="joy_node">
+    <param name="dev" value="$(arg joy_dev)" />
+    <param name="deadzone" value="0.1" />
+    <param name="autorepeat_rate" value="20" />
+  </node>
+
+  <node pkg="teleop_twist_joy" name="teleop_twist_joy" type="teleop_node">
+    <rosparam command="load" file="$(arg config_filepath)" />
+    <remap from="/cmd_vel" to="/robomaster_s1/cmd_vel"/>
+  </node>
+</launch>
