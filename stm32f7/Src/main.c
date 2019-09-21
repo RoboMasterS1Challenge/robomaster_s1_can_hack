@@ -190,7 +190,6 @@ int main(void)
     uint64_t test_counter=0;
     while (1)
     {
-        MX_LWIP_Process();
 
     	// 0x201 Intelligent Controller Command
         if (buffer_rp1 != buffer_wp1)
@@ -242,7 +241,7 @@ int main(void)
         			send_data[send_data_size-1] = 0;
             		appendCRC16CheckSum(send_data,send_data_size);
         		}
-                //UdpSendData(msg.can_id, send_data, send_data_size);
+                UdpSendData(msg.can_id, send_data, send_data_size);
                 for(i=0;i<send_data_size;i++){
                 	can_command_buffer[can_command_buffer_wp] = send_data[i];
                 	can_command_buffer_wp++;
@@ -260,7 +259,7 @@ int main(void)
             buffer_rp2 %= BUFFER_SIZE;
             if(ret)
             {
-                //UdpSendData(msg.can_id, send_data, send_data_size);
+                UdpSendData(msg.can_id, send_data, send_data_size);
             }
         }
 
@@ -289,6 +288,7 @@ int main(void)
         	}
         }
 
+        MX_LWIP_Process();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

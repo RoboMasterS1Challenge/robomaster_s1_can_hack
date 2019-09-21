@@ -64,8 +64,8 @@ void RoboMasterS1Bridge::twistCommandCallback(const geometry_msgs::Twist::ConstP
   send_data[4] = 0x01; // Command Number
   send_data[5] = uint8_t(int16_t(twist_command->linear.x * 100) >> 8);
   send_data[6] = uint8_t(int16_t(twist_command->linear.x * 100) & 0xFF);
-  send_data[7] = uint8_t(int16_t(twist_command->linear.y * 100) >> 8);
-  send_data[8] = uint8_t(int16_t(twist_command->linear.y * 100) & 0xFF);
+  send_data[7] = uint8_t(int16_t(-twist_command->linear.y * 100) >> 8);
+  send_data[8] = uint8_t(int16_t(-twist_command->linear.y * 100) & 0xFF);
   send_data[9] = uint8_t(int16_t(twist_command->linear.z * 100) >> 8);
   send_data[10] = uint8_t(int16_t(twist_command->linear.z * 100) & 0xFF);
   send_data[11] = uint8_t(int16_t(twist_command->angular.x * 100) >> 8);
@@ -81,7 +81,7 @@ void RoboMasterS1Bridge::twistCommandCallback(const geometry_msgs::Twist::ConstP
   {
     ROS_WARN("Cannot send packet");
   }else{
-    ROS_WARN("Send packet");
+    ROS_WARN_DELAYED_THROTTLE(10,"Send packet");
   }
 }
 
@@ -97,12 +97,14 @@ void RoboMasterS1Bridge::udpReceiveThread(uint8_t can_id_num)
     {
     case 0: //0x201
 
+    if(debug_print_){
       for (int i = 0; i < recv_msglen; i++)
       {
         printf("0x%02X,", buf[i]);
       }
       printf("\r");
       printf("\n");
+    }
       break;
     case 1: //0x202
       break;
