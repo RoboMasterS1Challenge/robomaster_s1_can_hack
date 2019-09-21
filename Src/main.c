@@ -25,25 +25,12 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "string.h"
+#include "robomaster_s1.h"
 
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-#define CAN_ID_NUM 10
-typedef enum can_ids
-{
-    ID_0x201 = 0,
-    ID_0x202 = 1,
-    ID_0x203 = 2,
-    ID_0x204 = 3,
-    ID_0x211 = 4,
-    ID_0x212 = 5,
-    ID_0x213 = 6,
-    ID_0x214 = 7,
-    ID_0x215 = 8,
-    ID_0x216 = 9
-} can_ids;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -74,14 +61,6 @@ uint8_t RxData2[8];
 uint32_t TxMailbox2;
 uint32_t RxMailbox2;
 
-typedef struct CANRxMsg
-{
-    can_ids can_id;
-    uint8_t dlc;
-    uint8_t data[8];
-} CANRxMsg;
-
-#define BUFFER_SIZE 1024
 volatile CANRxMsg rx_msg_buffer1[BUFFER_SIZE];
 volatile int buffer_rp1;
 volatile int buffer_wp1;
@@ -93,7 +72,7 @@ volatile uint8_t can_command_buffer[BUFFER_SIZE];
 volatile int can_command_buffer_rp;
 volatile int can_command_buffer_wp;
 
-
+extern twist command_twist;
 
 /* USER CODE END PV */
 
@@ -106,7 +85,7 @@ static void MX_CAN2_Init(void);
 static void CAN_FilterConfig(void);
 extern void UdpSendData(uint8_t id, uint8_t* send_data, uint8_t send_data_size);
 extern void StartUdp(uint8_t* ip_addr);
-extern int ParseCanData(uint8_t id, uint8_t* in_data, uint8_t in_data_size, uint8_t out_data[], uint8_t* out_data_size);
+extern int parseCanData(uint8_t id, uint8_t* in_data, uint8_t in_data_size, uint8_t out_data[], uint8_t* out_data_size);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -120,32 +99,33 @@ extern int ParseCanData(uint8_t id, uint8_t* in_data, uint8_t in_data_size, uint
   */
 int main(void)
 {
-    /* USER CODE BEGIN 1 */
+  /* USER CODE BEGIN 1 */
 
-    /* USER CODE END 1 */
+  /* USER CODE END 1 */
+  
 
-    /* MCU Configuration--------------------------------------------------------*/
+  /* MCU Configuration--------------------------------------------------------*/
 
-    /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-    HAL_Init();
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
 
-    /* USER CODE BEGIN Init */
+  /* USER CODE BEGIN Init */
 
-    /* USER CODE END Init */
+  /* USER CODE END Init */
 
-    /* Configure the system clock */
-    SystemClock_Config();
+  /* Configure the system clock */
+  SystemClock_Config();
 
-    /* USER CODE BEGIN SysInit */
+  /* USER CODE BEGIN SysInit */
 
-    /* USER CODE END SysInit */
+  /* USER CODE END SysInit */
 
-    /* Initialize all configured peripherals */
-    MX_GPIO_Init();
-    MX_LWIP_Init();
-    MX_CAN1_Init();
-    MX_CAN2_Init();
-    /* USER CODE BEGIN 2 */
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+  MX_LWIP_Init();
+  MX_CAN1_Init();
+  MX_CAN2_Init();
+  /* USER CODE BEGIN 2 */
 
     /* Configure the CAN peripheral */
     CAN_FilterConfig();
@@ -188,10 +168,10 @@ int main(void)
         Error_Handler();
     }
 
-    /* USER CODE END 2 */
+  /* USER CODE END 2 */
 
-    /* Infinite loop */
-    /* USER CODE BEGIN WHILE */
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
     buffer_rp1 = 0;
     buffer_wp1 = 0;
     buffer_rp2 = 0;
@@ -199,7 +179,7 @@ int main(void)
     can_command_buffer_rp = 0;
     can_command_buffer_wp = 0;
 
-    uint8_t send_ip_addr[] = {192, 168, 23, 255};
+    uint8_t send_ip_addr[] = {192,168,0,255};
     StartUdp(send_ip_addr);
 
     CANRxMsg msg;
@@ -207,17 +187,61 @@ int main(void)
     uint8_t send_data_size = 0;
     int i = 0;
     int ret =0;
+    uint64_t test_counter=0;
     while (1)
     {
+        MX_LWIP_Process();
+
     	// 0x201 Intelligent Controller Command
         if (buffer_rp1 != buffer_wp1)
         {
             msg = rx_msg_buffer1[buffer_rp1];
-            ret = ParseCanData(msg.can_id, msg.data, msg.dlc, send_data, &send_data_size);
+            ret = parseCanData(msg.can_id, msg.data, msg.dlc, send_data, &send_data_size);
             buffer_rp1++;
             buffer_rp1 %= BUFFER_SIZE;
             if(ret)
             {
+            	if(send_data[1] == 0x1B){
+            		// Linear X and Y
+            		//send_data[11] = 0;
+            		//send_data[12] = 4;
+            		//send_data[13] = 32;
+            		uint16_t linear_x = 256 * command_twist.linear.x + 1024;
+            		uint16_t linear_y = 256 * command_twist.linear.y + 1024;
+
+
+            		//data_x = (data[13]&0x1F)<<5 + data[12]>>3;
+            		//data_y = (data[12]&0x07)<<8 + data[11];
+
+            		send_data[13] &= 0xC0;
+            		send_data[13] |= (linear_x >> 5) & 0x3F;
+            		send_data[12] = 0x00;
+            		send_data[12] |= linear_x << 3;
+            		send_data[12] |= (linear_y >> 8) & 0x07;
+            		send_data[11] = 0x00;
+            		send_data[11] |= linear_y&0xFF;
+            		send_data[22] = 0x04;
+            		send_data[send_data_size - 2] = 0;
+            		send_data[send_data_size - 1] = 0;
+            		appendCRC16CheckSum(send_data,send_data_size);
+            		test_counter++;
+
+
+            	}
+
+            	// Smartphone touch event override
+        		if(send_data[0] == 0x55 &&
+        				send_data[1] == 0x0F &&
+						send_data[2] == 0x04 &&
+						send_data[3] == 0xA2 &&
+						send_data[4] == 0x09 &&
+						send_data[11] == 0x02){
+        			send_data[11] = 0;
+        			// Recalcuration CRC16
+        			send_data[send_data_size-2] = 0;
+        			send_data[send_data_size-1] = 0;
+            		appendCRC16CheckSum(send_data,send_data_size);
+        		}
                 //UdpSendData(msg.can_id, send_data, send_data_size);
                 for(i=0;i<send_data_size;i++){
                 	can_command_buffer[can_command_buffer_wp] = send_data[i];
@@ -231,12 +255,12 @@ int main(void)
         if (buffer_rp2 != buffer_wp2)
         {
             msg = rx_msg_buffer2[buffer_rp2];
-            ret = ParseCanData(msg.can_id, msg.data, msg.dlc, send_data, &send_data_size);
+            ret = parseCanData(msg.can_id, msg.data, msg.dlc, send_data, &send_data_size);
             buffer_rp2++;
             buffer_rp2 %= BUFFER_SIZE;
             if(ret)
             {
-                UdpSendData(msg.can_id, send_data, send_data_size);
+                //UdpSendData(msg.can_id, send_data, send_data_size);
             }
         }
 
@@ -265,12 +289,11 @@ int main(void)
         	}
         }
 
+    /* USER CODE END WHILE */
 
-        /* USER CODE END WHILE */
-
-        /* USER CODE BEGIN 3 */
+    /* USER CODE BEGIN 3 */
     }
-    /* USER CODE END 3 */
+  /* USER CODE END 3 */
 }
 
 /**
@@ -279,48 +302,49 @@ int main(void)
   */
 void SystemClock_Config(void)
 {
-    RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-    RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
-    /** Configure LSE Drive Capability
+  /** Configure LSE Drive Capability 
   */
-    HAL_PWR_EnableBkUpAccess();
-    /** Configure the main internal regulator output voltage
+  HAL_PWR_EnableBkUpAccess();
+  /** Configure the main internal regulator output voltage 
   */
-    __HAL_RCC_PWR_CLK_ENABLE();
-    __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
-    /** Initializes the CPU, AHB and APB busses clocks
+  __HAL_RCC_PWR_CLK_ENABLE();
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+  /** Initializes the CPU, AHB and APB busses clocks 
   */
-    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-    RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-    RCC_OscInitStruct.PLL.PLLM = 4;
-    RCC_OscInitStruct.PLL.PLLN = 192;
-    RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
-    RCC_OscInitStruct.PLL.PLLQ = 8;
-    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-    {
-        Error_Handler();
-    }
-    /** Activate the Over-Drive mode
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLM = 4;
+  RCC_OscInitStruct.PLL.PLLN = 192;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+  RCC_OscInitStruct.PLL.PLLQ = 8;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Activate the Over-Drive mode 
   */
-    if (HAL_PWREx_EnableOverDrive() != HAL_OK)
-    {
-        Error_Handler();
-    }
-    /** Initializes the CPU, AHB and APB busses clocks
+  if (HAL_PWREx_EnableOverDrive() != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Initializes the CPU, AHB and APB busses clocks 
   */
-    RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
-    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-    RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
-    RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-    if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_6) != HAL_OK)
-    {
-        Error_Handler();
-    }
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_6) != HAL_OK)
+  {
+    Error_Handler();
+  }
 }
 
 /**
@@ -331,32 +355,33 @@ void SystemClock_Config(void)
 static void MX_CAN1_Init(void)
 {
 
-    /* USER CODE BEGIN CAN1_Init 0 */
+  /* USER CODE BEGIN CAN1_Init 0 */
 
-    /* USER CODE END CAN1_Init 0 */
+  /* USER CODE END CAN1_Init 0 */
 
-    /* USER CODE BEGIN CAN1_Init 1 */
+  /* USER CODE BEGIN CAN1_Init 1 */
 
-    /* USER CODE END CAN1_Init 1 */
-    hcan1.Instance = CAN1;
-    hcan1.Init.Prescaler = 3;
-    hcan1.Init.Mode = CAN_MODE_NORMAL;
-    hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
-    hcan1.Init.TimeSeg1 = CAN_BS1_13TQ;
-    hcan1.Init.TimeSeg2 = CAN_BS2_2TQ;
-    hcan1.Init.TimeTriggeredMode = DISABLE;
-    hcan1.Init.AutoBusOff = DISABLE;
-    hcan1.Init.AutoWakeUp = DISABLE;
-    hcan1.Init.AutoRetransmission = DISABLE;
-    hcan1.Init.ReceiveFifoLocked = DISABLE;
-    hcan1.Init.TransmitFifoPriority = ENABLE;
-    if (HAL_CAN_Init(&hcan1) != HAL_OK)
-    {
-        Error_Handler();
-    }
-    /* USER CODE BEGIN CAN1_Init 2 */
+  /* USER CODE END CAN1_Init 1 */
+  hcan1.Instance = CAN1;
+  hcan1.Init.Prescaler = 3;
+  hcan1.Init.Mode = CAN_MODE_NORMAL;
+  hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
+  hcan1.Init.TimeSeg1 = CAN_BS1_13TQ;
+  hcan1.Init.TimeSeg2 = CAN_BS2_2TQ;
+  hcan1.Init.TimeTriggeredMode = DISABLE;
+  hcan1.Init.AutoBusOff = DISABLE;
+  hcan1.Init.AutoWakeUp = DISABLE;
+  hcan1.Init.AutoRetransmission = DISABLE;
+  hcan1.Init.ReceiveFifoLocked = DISABLE;
+  hcan1.Init.TransmitFifoPriority = ENABLE;
+  if (HAL_CAN_Init(&hcan1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN CAN1_Init 2 */
 
-    /* USER CODE END CAN1_Init 2 */
+  /* USER CODE END CAN1_Init 2 */
+
 }
 
 /**
@@ -367,32 +392,33 @@ static void MX_CAN1_Init(void)
 static void MX_CAN2_Init(void)
 {
 
-    /* USER CODE BEGIN CAN2_Init 0 */
+  /* USER CODE BEGIN CAN2_Init 0 */
 
-    /* USER CODE END CAN2_Init 0 */
+  /* USER CODE END CAN2_Init 0 */
 
-    /* USER CODE BEGIN CAN2_Init 1 */
+  /* USER CODE BEGIN CAN2_Init 1 */
 
-    /* USER CODE END CAN2_Init 1 */
-    hcan2.Instance = CAN2;
-    hcan2.Init.Prescaler = 3;
-    hcan2.Init.Mode = CAN_MODE_NORMAL;
-    hcan2.Init.SyncJumpWidth = CAN_SJW_1TQ;
-    hcan2.Init.TimeSeg1 = CAN_BS1_13TQ;
-    hcan2.Init.TimeSeg2 = CAN_BS2_2TQ;
-    hcan2.Init.TimeTriggeredMode = DISABLE;
-    hcan2.Init.AutoBusOff = DISABLE;
-    hcan2.Init.AutoWakeUp = DISABLE;
-    hcan2.Init.AutoRetransmission = DISABLE;
-    hcan2.Init.ReceiveFifoLocked = DISABLE;
-    hcan2.Init.TransmitFifoPriority = ENABLE;
-    if (HAL_CAN_Init(&hcan2) != HAL_OK)
-    {
-        Error_Handler();
-    }
-    /* USER CODE BEGIN CAN2_Init 2 */
+  /* USER CODE END CAN2_Init 1 */
+  hcan2.Instance = CAN2;
+  hcan2.Init.Prescaler = 3;
+  hcan2.Init.Mode = CAN_MODE_NORMAL;
+  hcan2.Init.SyncJumpWidth = CAN_SJW_1TQ;
+  hcan2.Init.TimeSeg1 = CAN_BS1_13TQ;
+  hcan2.Init.TimeSeg2 = CAN_BS2_2TQ;
+  hcan2.Init.TimeTriggeredMode = DISABLE;
+  hcan2.Init.AutoBusOff = DISABLE;
+  hcan2.Init.AutoWakeUp = DISABLE;
+  hcan2.Init.AutoRetransmission = DISABLE;
+  hcan2.Init.ReceiveFifoLocked = DISABLE;
+  hcan2.Init.TransmitFifoPriority = ENABLE;
+  if (HAL_CAN_Init(&hcan2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN CAN2_Init 2 */
 
-    /* USER CODE END CAN2_Init 2 */
+  /* USER CODE END CAN2_Init 2 */
+
 }
 
 /**
@@ -402,69 +428,70 @@ static void MX_CAN2_Init(void)
   */
 static void MX_GPIO_Init(void)
 {
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
 
-    /* GPIO Ports Clock Enable */
-    __HAL_RCC_GPIOC_CLK_ENABLE();
-    __HAL_RCC_GPIOH_CLK_ENABLE();
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    __HAL_RCC_GPIOB_CLK_ENABLE();
-    __HAL_RCC_GPIOD_CLK_ENABLE();
-    __HAL_RCC_GPIOG_CLK_ENABLE();
+  /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOH_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOG_CLK_ENABLE();
 
-    /*Configure GPIO pin Output Level */
-    HAL_GPIO_WritePin(GPIOB, LD3_Pin | LD2_Pin, GPIO_PIN_RESET);
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, LD3_Pin|LD2_Pin, GPIO_PIN_RESET);
 
-    /*Configure GPIO pin Output Level */
-    HAL_GPIO_WritePin(USB_PowerSwitchOn_GPIO_Port, USB_PowerSwitchOn_Pin, GPIO_PIN_RESET);
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(USB_PowerSwitchOn_GPIO_Port, USB_PowerSwitchOn_Pin, GPIO_PIN_RESET);
 
-    /*Configure GPIO pin : USER_Btn_Pin */
-    GPIO_InitStruct.Pin = USER_Btn_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(USER_Btn_GPIO_Port, &GPIO_InitStruct);
+  /*Configure GPIO pin : USER_Btn_Pin */
+  GPIO_InitStruct.Pin = USER_Btn_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(USER_Btn_GPIO_Port, &GPIO_InitStruct);
 
-    /*Configure GPIO pins : LD3_Pin LD2_Pin */
-    GPIO_InitStruct.Pin = LD3_Pin | LD2_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  /*Configure GPIO pins : LD3_Pin LD2_Pin */
+  GPIO_InitStruct.Pin = LD3_Pin|LD2_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-    /*Configure GPIO pins : STLK_RX_Pin STLK_TX_Pin */
-    GPIO_InitStruct.Pin = STLK_RX_Pin | STLK_TX_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    GPIO_InitStruct.Alternate = GPIO_AF7_USART3;
-    HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+  /*Configure GPIO pins : STLK_RX_Pin STLK_TX_Pin */
+  GPIO_InitStruct.Pin = STLK_RX_Pin|STLK_TX_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF7_USART3;
+  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
-    /*Configure GPIO pin : USB_PowerSwitchOn_Pin */
-    GPIO_InitStruct.Pin = USB_PowerSwitchOn_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    HAL_GPIO_Init(USB_PowerSwitchOn_GPIO_Port, &GPIO_InitStruct);
+  /*Configure GPIO pin : USB_PowerSwitchOn_Pin */
+  GPIO_InitStruct.Pin = USB_PowerSwitchOn_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(USB_PowerSwitchOn_GPIO_Port, &GPIO_InitStruct);
 
-    /*Configure GPIO pin : USB_OverCurrent_Pin */
-    GPIO_InitStruct.Pin = USB_OverCurrent_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(USB_OverCurrent_GPIO_Port, &GPIO_InitStruct);
+  /*Configure GPIO pin : USB_OverCurrent_Pin */
+  GPIO_InitStruct.Pin = USB_OverCurrent_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(USB_OverCurrent_GPIO_Port, &GPIO_InitStruct);
 
-    /*Configure GPIO pins : USB_SOF_Pin USB_ID_Pin USB_DM_Pin USB_DP_Pin */
-    GPIO_InitStruct.Pin = USB_SOF_Pin | USB_ID_Pin | USB_DM_Pin | USB_DP_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-    GPIO_InitStruct.Alternate = GPIO_AF10_OTG_FS;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  /*Configure GPIO pins : USB_SOF_Pin USB_ID_Pin USB_DM_Pin USB_DP_Pin */
+  GPIO_InitStruct.Pin = USB_SOF_Pin|USB_ID_Pin|USB_DM_Pin|USB_DP_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  GPIO_InitStruct.Alternate = GPIO_AF10_OTG_FS;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-    /*Configure GPIO pin : USB_VBUS_Pin */
-    GPIO_InitStruct.Pin = USB_VBUS_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(USB_VBUS_GPIO_Port, &GPIO_InitStruct);
+  /*Configure GPIO pin : USB_VBUS_Pin */
+  GPIO_InitStruct.Pin = USB_VBUS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(USB_VBUS_GPIO_Port, &GPIO_InitStruct);
+
 }
 
 /* USER CODE BEGIN 4 */
@@ -608,10 +635,10 @@ void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
 
             /* Start Transmission process */
             int ret = HAL_CAN_AddTxMessage(&hcan1, &TxHeader1, TxData1, &TxMailbox1);
-                        while (ret != HAL_OK)
-                        {
-                        	ret = HAL_CAN_AddTxMessage(&hcan1, &TxHeader1, TxData1, &TxMailbox1);
-                        }
+//                        while (ret != HAL_OK)
+//                        {
+//                        	ret = HAL_CAN_AddTxMessage(&hcan1, &TxHeader1, TxData1, &TxMailbox1);
+//                        }
 
             CANRxMsg msg;
             switch (RxHeader2.StdId)
@@ -670,10 +697,10 @@ void HAL_CAN_RxFifo1FullCallback(CAN_HandleTypeDef *hcan)
 
             /* Start Transmission process */
             int ret = HAL_CAN_AddTxMessage(&hcan1, &TxHeader1, TxData1, &TxMailbox1);
-                        while (ret != HAL_OK)
-                        {
-                        	ret = HAL_CAN_AddTxMessage(&hcan1, &TxHeader1, TxData1, &TxMailbox1);
-                        }
+//                        while (ret != HAL_OK)
+//                        {
+//                        	ret = HAL_CAN_AddTxMessage(&hcan1, &TxHeader1, TxData1, &TxMailbox1);
+//                        }
 
             CANRxMsg msg;
             switch (RxHeader2.StdId)
@@ -727,16 +754,15 @@ void HAL_CAN_RxFifo1FullCallback(CAN_HandleTypeDef *hcan)
   */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-    /* USER CODE BEGIN Callback 0 */
+  /* USER CODE BEGIN Callback 0 */
 
-    /* USER CODE END Callback 0 */
-    if (htim->Instance == TIM10)
-    {
-        HAL_IncTick();
-    }
-    /* USER CODE BEGIN Callback 1 */
+  /* USER CODE END Callback 0 */
+  if (htim->Instance == TIM10) {
+    HAL_IncTick();
+  }
+  /* USER CODE BEGIN Callback 1 */
 
-    /* USER CODE END Callback 1 */
+  /* USER CODE END Callback 1 */
 }
 
 /**
@@ -745,13 +771,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   */
 void Error_Handler(void)
 {
-    /* USER CODE BEGIN Error_Handler_Debug */
+  /* USER CODE BEGIN Error_Handler_Debug */
     /* User can add his own implementation to report the HAL error return state */
 
-    /* USER CODE END Error_Handler_Debug */
+  /* USER CODE END Error_Handler_Debug */
 }
 
-#ifdef USE_FULL_ASSERT
+#ifdef  USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number
   *         where the assert_param error has occurred.
@@ -760,11 +786,11 @@ void Error_Handler(void)
   * @retval None
   */
 void assert_failed(uint8_t *file, uint32_t line)
-{
-    /* USER CODE BEGIN 6 */
+{ 
+  /* USER CODE BEGIN 6 */
     /* User can add his own implementation to report the file name and line number,
      tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-    /* USER CODE END 6 */
+  /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
 
