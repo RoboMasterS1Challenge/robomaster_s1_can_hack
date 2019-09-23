@@ -17,11 +17,14 @@ If you want to control via Wifi, please prepare like these items.
 - Mobile Battery for Wifi Converter.
 
 ## How to install
+
 Install ds4drv for PlayStation4(R) Controller
 $ sudo pip install ds4drv
+
 Install Ubuntu WiFi Access Point
 $sudo apt install hostapd
 $sudo vi /etc/hostapd/hostapd.conf
+
 interface=wlp61s0 # your WiFi device
 driver=nl80211
 ssid=RoboMasterS1Host
