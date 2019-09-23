@@ -6,8 +6,9 @@ RoboMasterS1Bridge::RoboMasterS1Bridge()
     : nh_(""), pnh_("~")
 {
   // ROS
-  robomaster_s1_bridge_tx_sub_ = nh_.subscribe("/robomaster_s1/cmd_vel", 10, &RoboMasterS1Bridge::twistCommandCallback, this);
-  robomaster_s1_bridge_rx_pub_ = nh_.advertise<std_msgs::UInt8MultiArray>("/robomaster_s1/can_info", 10);
+  robomaster_s1_bridge_rx_sub_ = nh_.subscribe("/robomaster_s1/cmd_vel", 10, &RoboMasterS1Bridge::twistCommandCallback, this);
+  robomaster_s1_bridge_rx_joy_sub_ = nh_.subscribe("/joy", 10, &RoboMasterS1Bridge::joyCommandCallback, this);
+  robomaster_s1_bridge_tx_pub_ = nh_.advertise<std_msgs::UInt8MultiArray>("/robomaster_s1/can_info", 10);
 
   // Parameters
   pnh_.param("debug_print", debug_print_, (int)0);
@@ -86,6 +87,33 @@ void RoboMasterS1Bridge::twistCommandCallback(const geometry_msgs::Twist::ConstP
   }
 }
 
+void RoboMasterS1Bridge::joyCommandCallback(const sensor_msgs::Joy::ConstPtr &joy_command)
+{
+  if (joy_command->buttons[11] == 1)
+  {
+    // UDP Send
+    uint8_t send_data[8];
+    send_data[0] = 0x55;
+    send_data[1] = 0x08;
+    send_data[2] = 0x04;
+    send_data[3] = 0x00;
+    appendCRC8CheckSum(send_data, 4);
+    send_data[4] = 0x02; // Command Number
+    send_data[5] = 0x01; //Blaster
+    send_data[6] = 0x00;
+    send_data[7] = 0x00;
+    appendCRC16CheckSum(send_data, 8);
+    if (udp_send_->udp_send(send_data, 8) == -1)
+    {
+      ROS_WARN("Cannot send packet");
+    }
+    else
+    {
+      ROS_WARN_DELAYED_THROTTLE(10, "Send packet");
+    }
+  }
+}
+
 void RoboMasterS1Bridge::udpReceiveThread(uint8_t can_id_num)
 {
   while (ros::ok())
@@ -98,7 +126,7 @@ void RoboMasterS1Bridge::udpReceiveThread(uint8_t can_id_num)
     switch (can_id_num)
     {
     case 0: //0x201
-      if (buf[1] == 0x1B)
+      //if (buf[1] == 0x0E && buf[4] == 0x09 && buf[5] == 0x17 )
       {
         for (int i = 0; i < recv_msglen; i++)
         {
@@ -114,7 +142,7 @@ void RoboMasterS1Bridge::udpReceiveThread(uint8_t can_id_num)
           printf("\n");
         }
       }
-      robomaster_s1_bridge_rx_pub_.publish(debug_data);
+      robomaster_s1_bridge_tx_pub_.publish(debug_data);
       break;
     case 1: //0x202
       break;

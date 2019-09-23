@@ -12,6 +12,7 @@
 #define PI 3.14159265
 
 #define TWIST_COMMAND_SIZE 19
+#define BLASTER_COMMAND_SIZE 8
 
 typedef enum can_ids
 {

@@ -73,6 +73,10 @@ volatile int can_command_buffer_rp;
 volatile int can_command_buffer_wp;
 
 extern twist command_twist;
+extern int command_blaster;
+
+uint8_t time_stamp[2];
+uint16_t blaster_counter;
 
 /* USER CODE END PV */
 
@@ -200,17 +204,45 @@ int main(void)
             buffer_rp1 %= BUFFER_SIZE;
             if(ret)
             {
+            	if(command_blaster){
+            		command_blaster = 0;
+            		uint8_t balster_data[14];
+            		balster_data[0] = 0x55;
+            		balster_data[1] = 0x0E;
+            		balster_data[2] = 0x04;
+            		balster_data[3] = 0x00;
+            		appendCRC8CheckSum(balster_data,4);
+            		balster_data[4] = 0x09;
+            		balster_data[5] = 0x17;
+            		balster_data[6] = blaster_counter&0xFF;
+            		balster_data[7] = blaster_counter>>8;
+            		balster_data[8] = 0x00;
+            		balster_data[9] = 0x3F;
+            		balster_data[10] = 0x51;
+            		balster_data[11] = 0x11;
+            		balster_data[12] = 0x00;
+            		balster_data[13] = 0x00;
+            		appendCRC8CheckSum(balster_data,14);
+            		blaster_counter++;
+                    for(i=0;i<14;i++){
+                    	can_command_buffer[can_command_buffer_wp] = balster_data[i];
+                    	can_command_buffer_wp++;
+                    	can_command_buffer_wp %= BUFFER_SIZE;
+                    }
+                    UdpSendData(msg.can_id, balster_data, 14);
+            	}
+
             	if(send_data[1] == 0x1B){
+            		// Get time stamp
+            		time_stamp[0] = send_data[6];
+            		time_stamp[1] = send_data[7];
+
             		// Linear X and Y
-            		//send_data[11] = 0;
-            		//send_data[12] = 4;
-            		//send_data[13] = 32;
             		uint16_t linear_x = 256 * command_twist.linear.x + 1024;
             		uint16_t linear_y = 256 * command_twist.linear.y + 1024;
+            		int16_t angular_z = 256 * command_twist.angular.z + 1024;
 
 
-            		//data_x = (data[13]&0x1F)<<5 + data[12]>>3;
-            		//data_y = (data[12]&0x07)<<8 + data[11];
 
             		send_data[13] &= 0xC0;
             		send_data[13] |= (linear_x >> 5) & 0x3F;
@@ -219,12 +251,41 @@ int main(void)
             		send_data[12] |= (linear_y >> 8) & 0x07;
             		send_data[11] = 0x00;
             		send_data[11] |= linear_y&0xFF;
-            		send_data[22] = 0x04;
+
+            		send_data[17] = (angular_z>>4) & 0xFF;//0x40;
+            		send_data[16] = (angular_z<<4) | 0x08;//0x08;
+
+            		send_data[18] = 0x00;
+
+            		send_data[19] = 0x02 | ((angular_z<<2)&0xFF);
+            		send_data[20] = (angular_z>>6)&0xFF;// 0x10;
+
+            		send_data[21] = 0x04;
+            		send_data[22] = 0x04; // Enable Flag 4:x-y 8:yaw
+            		send_data[23] = 0x00;
+            		send_data[24] = 0x04;
+
             		send_data[send_data_size - 2] = 0;
             		send_data[send_data_size - 1] = 0;
             		appendCRC16CheckSum(send_data,send_data_size);
             		test_counter++;
 
+
+            	}
+            	if(send_data[1] == 0x14 && send_data[5] == 0x04){
+            		// Linear X and Y
+            		int16_t angular_y = -1024 * command_twist.angular.y;
+            		int16_t angular_z = -1024 * command_twist.angular.z;
+
+
+            		send_data[14] = (angular_y >> 8) & 0xFF;
+            		send_data[13] = angular_y & 0xFF;
+            		send_data[16] = (angular_z >> 8) & 0xFF;
+            		send_data[15] = angular_z & 0xFF;
+
+            		send_data[send_data_size - 2] = 0;
+            		send_data[send_data_size - 1] = 0;
+            		appendCRC16CheckSum(send_data,send_data_size);
 
             	}
 

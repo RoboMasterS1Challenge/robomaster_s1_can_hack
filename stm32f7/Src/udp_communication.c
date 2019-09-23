@@ -8,9 +8,11 @@
 ip4_addr_t forward_ip;
 struct udp_pcb *broadcast_pcb[CAN_ID_NUM];
 struct udp_pcb *ptel_pcb;
-extern twist parseCommandData(uint8_t* in_data, uint8_t in_data_size);
+extern twist parseTwistCommandData(uint8_t* in_data, uint8_t in_data_size);
+extern int parseBlasterCommandData(uint8_t* in_data, uint8_t in_data_size);
 
 twist command_twist;
+int command_blaster;
 
 const uint16_t port_list[CAN_ID_NUM] = {
 		0x201 + 10000,
@@ -44,11 +46,16 @@ void UdpRecvDataCallback(void *arg, struct udp_pcb *pcb, struct pbuf *p, struct 
 	int i;
 	uint8_t buf[TWIST_COMMAND_SIZE];
       if (p != NULL) {
-    		if(p->len == TWIST_COMMAND_SIZE){
-    			memcpy(buf,p->payload,TWIST_COMMAND_SIZE);
-    			command_twist = parseCommandData(buf, TWIST_COMMAND_SIZE);
-                //UdpSendData(0,buf,TWIST_COMMAND_SIZE);
-    		}
+  		if(p->len == TWIST_COMMAND_SIZE){
+  			memcpy(buf,p->payload,TWIST_COMMAND_SIZE);
+  			command_twist = parseTwistCommandData(buf, TWIST_COMMAND_SIZE);
+              //UdpSendData(0,buf,TWIST_COMMAND_SIZE);
+  		}
+		if(p->len == BLASTER_COMMAND_SIZE){
+			memcpy(buf,p->payload,BLASTER_COMMAND_SIZE);
+			command_blaster = parseBlasterCommandData(buf, BLASTER_COMMAND_SIZE);
+            //UdpSendData(0,buf,TWIST_COMMAND_SIZE);
+		}
             pbuf_free(p);
       }
 }

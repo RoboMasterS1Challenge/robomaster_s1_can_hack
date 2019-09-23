@@ -93,7 +93,7 @@ int parseCanData(uint8_t id, uint8_t* in_data, uint8_t in_data_size, uint8_t out
 	return 1;
 }
 
-twist parseCommandData(uint8_t* in_data, uint8_t in_data_size)
+twist parseTwistCommandData(uint8_t* in_data, uint8_t in_data_size)
 {
 	twist command_twist;
 	command_twist.enable = 0;
@@ -130,4 +130,30 @@ twist parseCommandData(uint8_t* in_data, uint8_t in_data_size)
 	}
 
 	return command_twist;
+}
+
+int parseBlasterCommandData(uint8_t* in_data, uint8_t in_data_size)
+{
+	int blaster = 0;
+
+	// Check data length
+	if(in_data_size != BLASTER_COMMAND_SIZE)
+	{
+		// Not enough data
+		return blaster;
+	}
+
+	if(in_data[0] == 0x55 &&
+		in_data[1] == BLASTER_COMMAND_SIZE &&
+		in_data[2] == 0x04 &&
+		verifyCRC8CheckSum(in_data, 4) == 1 &&
+		verifyCRC16CheckSum(in_data, BLASTER_COMMAND_SIZE) == 1 &&
+		in_data[4] == 0x02
+		){
+
+		// make blaster command
+		blaster = in_data[5];
+	}
+
+	return blaster;
 }
