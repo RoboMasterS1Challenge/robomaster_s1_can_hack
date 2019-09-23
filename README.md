@@ -2,7 +2,7 @@
 
 This is a ROS node package and Nucleo-F767ZI Firmware for controlling your RoboMaster S1 through ROS network.
 
-## Preoare
+## Prepare
 You should prepare these items.
 - DJI RoboMaster S1
 - Ubuntu PC with WiFi (16.04 LTS and STM32CubeIDE)
