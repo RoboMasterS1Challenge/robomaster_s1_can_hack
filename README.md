@@ -1,4 +1,4 @@
-# DJI RoboMaster S1 ROS Bridge Package
+# DJI RoboMaster S1 ROS Bridge Package (under developping)
 
 This is a ROS node package and Nucleo-F767ZI Firmware for controlling your RoboMaster S1 through ROS network.
 
