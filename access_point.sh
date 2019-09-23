@@ -8,9 +8,9 @@ WIFI_IF=wlp61s0
 
 start() {
     service network-manager stop
-    sleep 1
+    sleep 3
     ifconfig ${WIFI_IF} ${AP_ADDR} netmask ${NETMASK} up
-    sleep 1
+    sleep 3
     service hostapd start
     if [ $? != 0 ]; then
         echo "failed to start hostapd."
@@ -23,9 +23,9 @@ start() {
 
 stop() {
     service hostapd stop
-    sleep 1    
+    sleep 3    
     ifconfig ${WIFI_IF} down
-    sleep 1
+    sleep 3
     service network-manager start
 
     echo "stop access-point."

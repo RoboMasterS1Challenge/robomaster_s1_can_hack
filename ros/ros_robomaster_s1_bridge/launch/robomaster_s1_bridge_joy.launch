@@ -3,7 +3,7 @@
   <arg name="ns" default="/system"/>
   <arg name="respawn" default="false"/>
   <arg name="ip_address" default="192.168.0.255"/>
-  <arg name="debug_print" default="0"/>
+  <arg name="debug_print" default="1"/>
   <group ns="$(arg ns)">
     <node pkg="ros_robomaster_s1_bridge" type="ros_robomaster_s1_bridge_node" name="ros_robomaster_s1_bridge" respawn="$(arg respawn)" output="screen">
       <param name="debug_print" value="$(arg debug_print)" />

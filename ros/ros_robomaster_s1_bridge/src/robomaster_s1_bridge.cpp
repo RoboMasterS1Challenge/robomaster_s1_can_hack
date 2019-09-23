@@ -39,9 +39,8 @@ RoboMasterS1Bridge::RoboMasterS1Bridge()
   }
 } //RoboMasterS1Bridge()
 
-
- // ~RoboMasterS1Bridge()
- // Destructor
+// ~RoboMasterS1Bridge()
+// Destructor
 RoboMasterS1Bridge::~RoboMasterS1Bridge()
 {
   for (int32_t i = 0; i < CAN_ID_NUM; ++i)
@@ -80,8 +79,10 @@ void RoboMasterS1Bridge::twistCommandCallback(const geometry_msgs::Twist::ConstP
   if (udp_send_->udp_send(send_data, 19) == -1)
   {
     ROS_WARN("Cannot send packet");
-  }else{
-    ROS_WARN_DELAYED_THROTTLE(10,"Send packet");
+  }
+  else
+  {
+    ROS_WARN_DELAYED_THROTTLE(10, "Send packet");
   }
 }
 
@@ -96,26 +97,36 @@ void RoboMasterS1Bridge::udpReceiveThread(uint8_t can_id_num)
     switch (can_id_num)
     {
     case 0: //0x201
-
-    if(debug_print_){
-      for (int i = 0; i < recv_msglen; i++)
+      std_msgs::UInt8MultiArray debug_data;
+      if (buf[1] == 0x1B)
       {
-        printf("0x%02X,", buf[i]);
+        for (int i = 0; i < recv_msglen; i++)
+        {
+          debug_data.data.push_back(buf[i]);
+          if (debug_print_)
+          {
+            printf("0x%02X,", buf[i]);
+          }
+        }
+        if (debug_print_)
+        {
+          printf("\r");
+          printf("\n");
+        }
       }
-      printf("\r");
-      printf("\n");
+      robomaster_s1_bridge_rx_pub_.publish(debug_data);
     }
-      break;
-    case 1: //0x202
-      break;
-    case 2: //0x203
-      break;
-    case 3: //0x204
-      break;
-    default:
-      break;
-    }
+    break;
+  case 1: //0x202
+    break;
+  case 2: //0x203
+    break;
+  case 3: //0x204
+    break;
+  default:
+    break;
   }
+}
 }
 
 int32_t main(int32_t argc, char **argv)
