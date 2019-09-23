@@ -1,8 +1,8 @@
-# DJI RoboMaster S1 ROS Bridge Package (under developping)
+# DJI RoboMaster S1 ROS Bridge Package (under developing)
 
-This is a ROS node package and Nucleo-F767ZI Firmware for controlling your RoboMaster S1 through ROS network.
+This package contains a ROS node package and Nucleo-F767ZI firmware for controlling your RoboMaster S1 through the ROS network.
 
-## Prepare
+## Preparation
 You should prepare these items.
 - DJI RoboMaster S1
 - Ubuntu PC with WiFi (16.04 LTS and STM32CubeIDE)
@@ -17,6 +17,35 @@ If you want to control via Wifi, please prepare like these items.
 - Mobile Battery for Wifi Converter.
 
 ## How to install
+
+Install ds4drv for PlayStation4(R) Controller
+
+$ sudo pip install ds4drv
+
+Install Ubuntu WiFi Access Point
+
+$sudo apt install hostapd
+
+$sudo vi /etc/hostapd/hostapd.conf
+
+`interface=wlp61s0 # your WiFi device`
+
+`driver=nl80211`
+
+`ssid=RoboMasterS1Host`
+
+`hw_mode=g`
+
+`channel=7`
+
+`wpa=2 # WPA2`
+
+`wpa_passphrase=robomasters1 # your password`
+
+`wpa_key_mgmt=WPA-PSK`
+
+`rsn_pairwise=CCMP`
+
 $ git clone https://github.com/tatsuyai713/robomaster_s1_can_hack 
 
 Please make symbolic link from "ros" folder to your ROS workspace.
