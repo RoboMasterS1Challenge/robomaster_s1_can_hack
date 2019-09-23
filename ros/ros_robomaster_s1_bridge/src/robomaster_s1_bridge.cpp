@@ -93,11 +93,11 @@ void RoboMasterS1Bridge::udpReceiveThread(uint8_t can_id_num)
     uint8_t buf[BUFFER_MAX];
     memset(buf, 0, sizeof(buf));
     int recv_msglen = udp_receive_[can_id_num]->udp_recv(buf, sizeof(buf));
+    std_msgs::UInt8MultiArray debug_data;
 
     switch (can_id_num)
     {
     case 0: //0x201
-      std_msgs::UInt8MultiArray debug_data;
       if (buf[1] == 0x1B)
       {
         for (int i = 0; i < recv_msglen; i++)
@@ -115,18 +115,17 @@ void RoboMasterS1Bridge::udpReceiveThread(uint8_t can_id_num)
         }
       }
       robomaster_s1_bridge_rx_pub_.publish(debug_data);
+      break;
+    case 1: //0x202
+      break;
+    case 2: //0x203
+      break;
+    case 3: //0x204
+      break;
+    default:
+      break;
     }
-    break;
-  case 1: //0x202
-    break;
-  case 2: //0x203
-    break;
-  case 3: //0x204
-    break;
-  default:
-    break;
   }
-}
 }
 
 int32_t main(int32_t argc, char **argv)
