@@ -19,7 +19,7 @@ If you want to control via Wifi, please prepare like these items.
 ## How to install
 $ git clone https://github.com/tatsuyai713/robomaster_s1_can_hack 
 
-Please move "ros" folder to your ROS workspace.
+Please make symbolic link from "ros" folder to your ROS workspace.
 
 ## How to make controller board
 under construnction...
