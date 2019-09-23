@@ -28,23 +28,23 @@ $sudo apt install hostapd
 
 $sudo vi /etc/hostapd/hostapd.conf
 
-`interface=wlp61s0 # your WiFi device
+`interface=wlp61s0 # your WiFi device`
 
-driver=nl80211
+`driver=nl80211`
 
-ssid=RoboMasterS1Host
+`ssid=RoboMasterS1Host`
 
-hw_mode=g
+`hw_mode=g`
 
-channel=7
+`channel=7`
 
-wpa=2 # WPA2
+`wpa=2 # WPA2`
 
-wpa_passphrase=robomasters1 # your password
+`wpa_passphrase=robomasters1 # your password`
 
-wpa_key_mgmt=WPA-PSK
+`wpa_key_mgmt=WPA-PSK`
 
-rsn_pairwise=CCMP`
+`rsn_pairwise=CCMP`
 
 $ git clone https://github.com/tatsuyai713/robomaster_s1_can_hack 
 
