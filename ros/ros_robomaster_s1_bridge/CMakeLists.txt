@@ -9,10 +9,6 @@ find_package(catkin REQUIRED COMPONENTS
   # message_generation
 )
 
-find_package(Boost REQUIRED COMPONENTS 
-  system
-)
-
 # add_message_files(
 #   FILES
 #   CANFrame.msg
@@ -48,7 +44,6 @@ target_link_libraries(
   ${PROJECT_NAME}_node
   ${catkin_LIBRARIES}
   ${Boost_LIBRARIES}
-  yaml-cpp
 )
 
 add_dependencies( 
@@ -91,9 +86,9 @@ install(TARGETS ${PROJECT_NAME}_node
 #   # myfile2
 #   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
 # )
-install(DIRECTORY config/
-DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/config
-)
+# install(DIRECTORY config/
+# DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/config
+# )
 install(DIRECTORY launch/
   DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
 )

@@ -2,7 +2,7 @@
 <package>
   <name>ros_robomaster_s1_bridge</name>
   <version>0.1.0</version>
-  <description>ROS Robo Master S1 Bridge Node</description>
+  <description>ROS RoboMaster S1 ROS Bridge</description>
   <maintainer email="tatsuyai713@gmail.com">Tatsuya Ishikawa</maintainer>
   <license>MIT License</license>
   <buildtool_depend>catkin</buildtool_depend>

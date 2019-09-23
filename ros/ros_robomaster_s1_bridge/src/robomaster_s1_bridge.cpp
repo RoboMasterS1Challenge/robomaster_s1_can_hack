@@ -102,7 +102,7 @@ void RoboMasterS1Bridge::udpReceiveThread(uint8_t can_id_num)
       {
         for (int i = 0; i < recv_msglen; i++)
         {
-          debug_data.data.push_back(buf[i]);
+          debug_data.data.emplace_back(buf[i]);
           if (debug_print_)
           {
             printf("0x%02X,", buf[i]);
