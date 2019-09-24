@@ -126,7 +126,7 @@ void RoboMasterS1Bridge::udpReceiveThread(uint8_t can_id_num)
     switch (can_id_num)
     {
     case 0: //0x201
-      //if (buf[1] == 0x0E && buf[4] == 0x09 && buf[5] == 0x17 )
+      if (buf[4] == 0x09 && buf[5] == 0x17 )
       {
         for (int i = 0; i < recv_msglen; i++)
         {
