@@ -38,7 +38,7 @@ $sudo vi /etc/hostapd/hostapd.conf
 
 `channel=7`
 
-`wpa=`
+`wpa=2`
 
 `wpa_passphrase=robomasters1`
 
