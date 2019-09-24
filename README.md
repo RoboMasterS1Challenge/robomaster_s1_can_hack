@@ -6,7 +6,7 @@ This package contains a ROS node package and Nucleo-F767ZI firmware for controll
 You should prepare these items.
 - DJI RoboMaster S1
 - Ubuntu PC with WiFi (16.04 LTS and STM32CubeIDE)
-- Nucleo-F767Zi
+- Nucleo-F767ZI
 - Universal board (like this http://akizukidenshi.com/catalog/g/gP-09972/)
 - CAN Tranceiver breakout board (like this https://www.amazon.co.jp/dp/B076HHVZM1) 
 - Wire harnes
