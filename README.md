@@ -46,7 +46,7 @@ $sudo vi /etc/hostapd/hostapd.conf
 
 `rsn_pairwise=CCMP`
 
-$ git clone https://github.com/tatsuyai713/robomaster_s1_can_hack 
+$ git clone --recursive https://github.com/tatsuyai713/robomaster_s1_can_hack.git
 
 Please make symbolic link from "ros" folder to your ROS workspace.
 
