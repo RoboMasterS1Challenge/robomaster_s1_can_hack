@@ -28,7 +28,7 @@ $sudo apt install hostapd
 
 $sudo vi /etc/hostapd/hostapd.conf
 
-`interface=wlp61s0 # your WiFi device`
+`interface=wlp61s0`
 
 `driver=nl80211`
 
@@ -38,9 +38,9 @@ $sudo vi /etc/hostapd/hostapd.conf
 
 `channel=7`
 
-`wpa=2 # WPA2`
+`wpa=`
 
-`wpa_passphrase=robomasters1 # your password`
+`wpa_passphrase=robomasters1`
 
 `wpa_key_mgmt=WPA-PSK`
 
