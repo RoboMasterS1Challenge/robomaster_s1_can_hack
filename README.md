@@ -2,6 +2,9 @@
 
 This package contains a ROS node package and Nucleo-F767ZI firmware for controlling your RoboMaster S1 through the ROS network.
 
+## What you can do
+You can control DJI RoboMaster S1 using geometry_msgs::Twist through the ROS Network.
+
 ## Preparation
 You should prepare these items.
 - DJI RoboMaster S1
@@ -14,7 +17,7 @@ You should prepare these items.
 
 If you want to control via Wifi, please prepare like these items.
 - Ethernet-Wifi Converter (like this WLI-UTX-AG300/C)
-- Mobile Battery for Wifi Converter.
+- DCDC Converter (like this http://akizukidenshi.com/catalog/g/gK-09981/) or Mobile Battery for Wifi Converter
 
 ## How to install
 
