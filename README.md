@@ -4,6 +4,7 @@ This package contains a ROS node package and Nucleo-F767ZI firmware for controll
 
 ## What is this?
 You can control DJI RoboMaster S1 using geometry_msgs::Twist through the ROS Network.
+https://user-images.githubusercontent.com/34103899/65610183-ec85a180-dfeb-11e9-88a5-446db481f823.JPG
 
 ## Preparation
 You should prepare these items.
