@@ -7,22 +7,22 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
   geometry_msgs
   sensor_msgs
-  # message_generation
+  message_generation
 )
 
-# add_message_files(
-#   FILES
-#   CANFrame.msg
-# )
+add_message_files(
+  FILES
+  RoboMasterS1Info.msg
+)
 
-# generate_messages(
-#   DEPENDENCIES
-#   std_msgs
-# )
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+)
 
 catkin_package(
    INCLUDE_DIRS include
-   CATKIN_DEPENDS roscpp #message_runtime
+   CATKIN_DEPENDS roscpp message_runtime
 #  DEPENDS system_lib
 )
 

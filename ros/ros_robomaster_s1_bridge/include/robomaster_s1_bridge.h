@@ -15,9 +15,10 @@
 #include <vector>
 #include <thread>
 #include <mutex>
-#include "geometry_msgs/TwistStamped.h"
-#include "sensor_msgs/Joy.h"
-#include "std_msgs/UInt8MultiArray.h"
+#include <geometry_msgs/TwistStamped.h>
+#include <sensor_msgs/Joy.h>
+#include <std_msgs/UInt8MultiArray.h>
+#include <ros_robomaster_s1_bridge/RoboMasterS1Info.h>
 #include "robomaster_s1_crc.h"
 
 #define BUFFER_MAX 255
@@ -133,7 +134,8 @@ private:
   ros::NodeHandle nh_;
   ros::NodeHandle pnh_;
   // Publisher
-  ros::Publisher robomaster_s1_bridge_tx_pub_;
+  ros::Publisher robomaster_s1_bridge_tx_debug_pub_;
+  ros::Publisher robomaster_s1_bridge_tx_info_pub_;
   // Subscriber
   ros::Subscriber robomaster_s1_bridge_rx_sub_;
   ros::Subscriber robomaster_s1_bridge_rx_joy_sub_;
@@ -152,6 +154,15 @@ private:
 
   int debug_print_;
   std::string ip_address_;
+
+  // RoboMaster S1 Data
+  uint32_t base_odom_yaw_;
+  int32_t base_odom_yaw_raw_[4];
+  int32_t wheel_odom_[6];
+  double blaster_base_yaw_angle_;
+  double blaster_map_yaw_angle_;
+  double blaster_base_pitch_angle_;
+  double blaster_map_pitch_angle_;
 
   // callback functions
   void twistCommandCallback(const geometry_msgs::Twist::ConstPtr &twist_command);

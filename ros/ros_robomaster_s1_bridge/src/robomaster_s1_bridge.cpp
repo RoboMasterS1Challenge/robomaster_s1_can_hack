@@ -1,5 +1,10 @@
 #include "robomaster_s1_bridge.h"
 
+float hex2float(uint32_t hex_num)
+{
+  return *(float *)&hex_num;
+}
+
 // RoboMasterS1Bridge()
 // Constructor
 RoboMasterS1Bridge::RoboMasterS1Bridge()
@@ -8,7 +13,8 @@ RoboMasterS1Bridge::RoboMasterS1Bridge()
   // ROS
   robomaster_s1_bridge_rx_sub_ = nh_.subscribe("/robomaster_s1/cmd_vel", 10, &RoboMasterS1Bridge::twistCommandCallback, this);
   robomaster_s1_bridge_rx_joy_sub_ = nh_.subscribe("/joy", 10, &RoboMasterS1Bridge::joyCommandCallback, this);
-  robomaster_s1_bridge_tx_pub_ = nh_.advertise<std_msgs::UInt8MultiArray>("/robomaster_s1/can_info", 10);
+  robomaster_s1_bridge_tx_debug_pub_ = nh_.advertise<std_msgs::UInt8MultiArray>("/robomaster_s1/debug_info", 10);
+  robomaster_s1_bridge_tx_info_pub_ = nh_.advertise<ros_robomaster_s1_bridge::RoboMasterS1Info>("/robomaster_s1/robomaster_s1_info", 10);
 
   // Parameters
   pnh_.param("debug_print", debug_print_, (int)0);
@@ -123,10 +129,144 @@ void RoboMasterS1Bridge::udpReceiveThread(uint8_t can_id_num)
     int recv_msglen = udp_receive_[can_id_num]->udp_recv(buf, sizeof(buf));
     std_msgs::UInt8MultiArray debug_data;
 
+    ros_robomaster_s1_bridge::RoboMasterS1Info robomaster_s1_info;
     switch (can_id_num)
     {
     case 0: //0x201
-      //if (buf[1] == 0x0E && buf[4] == 0x09 && buf[5] == 0x17 )
+      if (buf[4] == 0x09 && buf[5] == 0x17)
+      {
+        for (int i = 0; i < recv_msglen; i++)
+        {
+          debug_data.data.emplace_back(buf[i]);
+          if (debug_print_)
+          {
+            printf("0x%02X,", buf[i]);
+          }
+        }
+        if (debug_print_)
+        {
+          printf("\r");
+          printf("\n");
+          robomaster_s1_bridge_tx_debug_pub_.publish(debug_data);
+        }
+      }
+      break;
+    case 1: //0x202
+      // From Motion Controller
+      if (buf[1] == 0x3D && buf[4] == 0x03 && buf[5] == 0x09)
+      {
+        int flag = (buf[24] >> 7) & 0x01;
+        base_odom_yaw_ = ((((uint16_t)buf[24]) << 8) | (((uint16_t)buf[23]) << 0));
+        if (flag == 0)
+        {
+          int shift = (0x86 - ((buf[24] << 1) | (buf[23] >> 7)));
+          base_odom_yaw_ = ((1 << 7) | buf[23]) >> shift;
+          base_odom_yaw_ *= -1;
+        }
+        else
+        {
+          int shift = (0x186 - ((buf[24] << 1) | (buf[23] >> 7)));
+          base_odom_yaw_ = ((1 << 7) | buf[23]) >> shift;
+        }
+        if (buf[24] == 0 && buf[23] == 0)
+        {
+          base_odom_yaw_ = 0;
+        }
+
+        uint32_t data = buf[38];
+        data = (data << 8) | buf[37];
+        data = (data << 8) | buf[36];
+        data = (data << 8) | buf[35];
+        base_odom_yaw_raw_[0] = (int32_t)(data);
+        data = buf[42];
+        data = (data << 8) | buf[41];
+        data = (data << 8) | buf[40];
+        data = (data << 8) | buf[39];
+        base_odom_yaw_raw_[1] = (int32_t)(data);
+        data = buf[50];
+        data = (data << 8) | buf[49];
+        data = (data << 8) | buf[48];
+        data = (data << 8) | buf[47];
+        base_odom_yaw_raw_[2] = (int32_t)(data);
+        data = buf[54];
+        data = (data << 8) | buf[53];
+        data = (data << 8) | buf[52];
+        data = (data << 8) | buf[51];
+        base_odom_yaw_raw_[3] = (int32_t)(data);
+        //printf("%d, %d, %d, %d\n",base_odom_yaw_raw_[0],base_odom_yaw_raw_[1],base_odom_yaw_raw_[2],base_odom_yaw_raw_[3]);
+      }
+      if (buf[1] == 0x31 && buf[4] == 0x03 && buf[5] == 0x04)
+      {
+        uint32_t data = buf[24];
+        data = (data << 8) | buf[23];
+        data = (data << 8) | buf[22];
+        data = (data << 8) | buf[21];
+        wheel_odom_[0] = (int32_t)(data);
+        data = buf[28];
+        data = (data << 8) | buf[27];
+        data = (data << 8) | buf[26];
+        data = (data << 8) | buf[25];
+        wheel_odom_[1] = (int32_t)(data);
+        data = buf[32];
+        data = (data << 8) | buf[31];
+        data = (data << 8) | buf[30];
+        data = (data << 8) | buf[29];
+        wheel_odom_[2] = (int32_t)(data);
+        data = buf[36];
+        data = (data << 8) | buf[35];
+        data = (data << 8) | buf[34];
+        data = (data << 8) | buf[33];
+        wheel_odom_[3] = (int32_t)(data);
+        data = buf[40];
+        data = (data << 8) | buf[39];
+        data = (data << 8) | buf[38];
+        data = (data << 8) | buf[37];
+        wheel_odom_[4] = (int32_t)(data);
+        data = buf[44];
+        data = (data << 8) | buf[43];
+        data = (data << 8) | buf[42];
+        data = (data << 8) | buf[41];
+        wheel_odom_[5] = (int32_t)(data);
+        //printf("%d, %d, %d, %d, %d\n",wheel_odom_[0],wheel_odom_[1],wheel_odom_[2],wheel_odom_[3],wheel_odom_[4]);
+      }
+      break;
+    case 2: //0x203
+      // From Blaster Gimbal
+      if (buf[1] == 0x11 && buf[4] == 0x04 && buf[5] == 0x03)
+      {
+        // Yaw Angle
+        uint16_t data = buf[12];
+        data = (data << 8) | buf[11];
+        blaster_base_yaw_angle_ = -(int16_t)(data) / 10.0;
+        data = buf[14];
+        data = (data << 8) | buf[13];
+        blaster_map_yaw_angle_ = -(int16_t)(data) / 100.0;
+
+        //printf("%lf, %lf\n",blaster_base_yaw_angle_,blaster_map_yaw_angle_);
+      }
+      if (buf[1] == 0x16 && buf[4] == 0x04 && buf[5] == 0x09)
+      {
+        // Pitch Angle
+        uint32_t data = buf[14];
+        data = (data << 8) | buf[13];
+        data = (data << 8) | buf[12];
+        data = (data << 8) | buf[11];
+        blaster_map_pitch_angle_ = (int32_t)(data) / 20000000.0 * 30.0;
+        data = buf[18];
+        data = (data << 8) | buf[17];
+        data = (data << 8) | buf[16];
+        data = (data << 8) | buf[15];
+        blaster_base_pitch_angle_ = (int32_t)(data) / 20000000.0 * 30.0;
+        //printf("%lf, %lf\n", blaster_map_pitch_angle_, blaster_base_pitch_angle_);
+      }
+      robomaster_s1_info.blaster_base_yaw = blaster_base_yaw_angle_;
+      robomaster_s1_info.blaster_map_yaw = blaster_map_yaw_angle_;
+      robomaster_s1_info.blaster_base_pitch = blaster_base_pitch_angle_;
+      robomaster_s1_info.blaster_map_pitch = blaster_map_pitch_angle_;
+      robomaster_s1_bridge_tx_info_pub_.publish(robomaster_s1_info);
+      break;
+    case 3: //0x204
+      if (buf[4] == 0x17 && buf[5] == 0x09)
       {
         for (int i = 0; i < recv_msglen; i++)
         {
@@ -142,13 +282,6 @@ void RoboMasterS1Bridge::udpReceiveThread(uint8_t can_id_num)
           printf("\n");
         }
       }
-      robomaster_s1_bridge_tx_pub_.publish(debug_data);
-      break;
-    case 1: //0x202
-      break;
-    case 2: //0x203
-      break;
-    case 3: //0x204
       break;
     default:
       break;
