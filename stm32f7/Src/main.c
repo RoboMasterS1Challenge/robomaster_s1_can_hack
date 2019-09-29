@@ -192,7 +192,7 @@ int main(void)
   int ret = 0;
   uint64_t test_counter = 0;
   int blaster_cycle = 0;
-  int blaster_inhibit = 0;
+  int blaster_timeout =0;
   while (1)
   {
 
@@ -205,246 +205,247 @@ int main(void)
       buffer_rp1 %= BUFFER_SIZE;
       if (ret)
       {
-        if (blaster_inhibit == 0)
+        if (command_blaster)
         {
-          if (command_blaster)
+          // kuratta oto 0x55,0x0F,0x04,0xA2,0x09,0x17,0x7C,0x09,0x00,0x3F,0x58,0xB0,0x01,0x10,0xE4
+
+          if (blaster_cycle == 0)
           {
-            // kuratta oto 0x55,0x0F,0x04,0xA2,0x09,0x17,0x7C,0x09,0x00,0x3F,0x58,0xB0,0x01,0x10,0xE4
-
-            if (blaster_cycle == 0)
+            uint8_t balster_data[14];
+            balster_data[0] = 0x55;
+            balster_data[1] = 0x0E;
+            balster_data[2] = 0x04;
+            balster_data[3] = 0x00;
+            appendCRC8CheckSum(balster_data, 4);
+            balster_data[4] = 0x09;
+            balster_data[5] = 0x17;
+            balster_data[6] = blaster_counter & 0xFF;
+            balster_data[7] = blaster_counter >> 8;
+            balster_data[8] = 0x00;
+            balster_data[9] = 0x3F;
+            balster_data[10] = 0x51;
+            balster_data[11] = 0x11;
+            balster_data[12] = 0x00;
+            balster_data[13] = 0x00;
+            appendCRC8CheckSum(balster_data, 14);
+            blaster_counter++;
+            for (i = 0; i < 14; i++)
             {
-              uint8_t balster_data[14];
-              balster_data[0] = 0x55;
-              balster_data[1] = 0x0E;
-              balster_data[2] = 0x04;
-              balster_data[3] = 0x00;
-              appendCRC8CheckSum(balster_data, 4);
-              balster_data[4] = 0x09;
-              balster_data[5] = 0x17;
-              balster_data[6] = blaster_counter & 0xFF;
-              balster_data[7] = blaster_counter >> 8;
-              balster_data[8] = 0x00;
-              balster_data[9] = 0x3F;
-              balster_data[10] = 0x51;
-              balster_data[11] = 0x11;
-              balster_data[12] = 0x00;
-              balster_data[13] = 0x00;
-              appendCRC8CheckSum(balster_data, 14);
-              blaster_counter++;
-              for (i = 0; i < 14; i++)
-              {
-                can_command_buffer[can_command_buffer_wp] = balster_data[i];
-                can_command_buffer_wp++;
-                can_command_buffer_wp %= BUFFER_SIZE;
-              }
-              UdpSendData(msg.can_id, balster_data, 14);
-              blaster_cycle++;
-              blaster_inhibit = 1000;
-              command_blaster = 0;
+              can_command_buffer[can_command_buffer_wp] = balster_data[i];
+              can_command_buffer_wp++;
+              can_command_buffer_wp %= BUFFER_SIZE;
             }
-            else if (blaster_cycle == 1)
+            UdpSendData(msg.can_id, balster_data, 14);
+            blaster_cycle++;
+          }
+          else if (blaster_cycle == 2)
+          {
+            uint8_t balster_data4[22];
+            balster_data4[0] = 0x55;
+            balster_data4[1] = 0x16;
+            balster_data4[2] = 0x04;
+            balster_data4[3] = 0x00;
+            appendCRC8CheckSum(balster_data4, 4);
+            balster_data4[4] = 0x09;
+            balster_data4[5] = 0x17;
+            balster_data4[6] = blaster_counter & 0xFF;
+            balster_data4[7] = blaster_counter >> 8;
+            balster_data4[8] = 0x00;
+            balster_data4[9] = 0x3F;
+            balster_data4[10] = 0x55;
+            balster_data4[11] = 0x73;
+            balster_data4[12] = 0x00;
+            balster_data4[13] = 0xFF;
+            balster_data4[14] = 0x00;
+            balster_data4[15] = 0x01;
+            balster_data4[16] = 0x28;
+            balster_data4[17] = 0x00;
+            balster_data4[18] = 0x00;
+            balster_data4[19] = 0x00;
+            balster_data4[20] = 0x00;
+            balster_data4[21] = 0x00;
+            appendCRC8CheckSum(balster_data4, 22);
+            blaster_counter++;
+            for (i = 0; i < 22; i++)
             {
-              uint8_t balster_data4[22];
-              balster_data4[0] = 0x55;
-              balster_data4[1] = 0x16;
-              balster_data4[2] = 0x04;
-              balster_data4[3] = 0x00;
-              appendCRC8CheckSum(balster_data4, 4);
-              balster_data4[4] = 0x09;
-              balster_data4[5] = 0x17;
-              balster_data4[6] = blaster_counter & 0xFF;
-              balster_data4[7] = blaster_counter >> 8;
-              balster_data4[8] = 0x00;
-              balster_data4[9] = 0x3F;
-              balster_data4[10] = 0x55;
-              balster_data4[11] = 0x73;
-              balster_data4[12] = 0x00;
-              balster_data4[13] = 0xFF;
-              balster_data4[14] = 0x00;
-              balster_data4[15] = 0x01;
-              balster_data4[16] = 0x28;
-              balster_data4[17] = 0x00;
-              balster_data4[18] = 0x00;
-              balster_data4[19] = 0x00;
-              balster_data4[20] = 0x00;
-              balster_data4[21] = 0x00;
-              appendCRC8CheckSum(balster_data4, 22);
-              blaster_counter++;
-              for (i = 0; i < 22; i++)
-              {
-                can_command_buffer[can_command_buffer_wp] = balster_data4[i];
-                can_command_buffer_wp++;
-                can_command_buffer_wp %= BUFFER_SIZE;
-              }
-              UdpSendData(msg.can_id, balster_data4, 22);
-              blaster_cycle = 0;
-              blaster_inhibit = 1000;
-              command_blaster = 0;
+              can_command_buffer[can_command_buffer_wp] = balster_data4[i];
+              can_command_buffer_wp++;
+              can_command_buffer_wp %= BUFFER_SIZE;
             }
+            UdpSendData(msg.can_id, balster_data4, 22);
+            blaster_cycle = 0;
+            command_blaster = 0;
           }
-        }
-        else
-        {
-          blaster_inhibit--;
-          if(blaster_inhibit < 0){
-        	  blaster_inhibit = 0;
-          }
-        }
 
-        //            	if( send_data[4] == 0x09 && send_data[5] == 0x17){ // Block Blaster
-        //            		send_data[1]  = 0;
-        //            		//            		balster_data[0] = 0x55;
-        //            		//            		balster_data[1] = 0x0E;
-        //            		//            		balster_data[2] = 0x04;
-        //            		//            		balster_data[3] = 0x00;
-        //            		//            		appendCRC8CheckSum(balster_data,4);
-        //            		//            		balster_data[4] = 0x09;
-        //            		//            		balster_data[5] = 0x17;
-        //
-        //            	}
+      }
 
-        //            	if(send_data[4] == 0x09 && send_data[5] == 0x18){ // Block LED Command
-        //            		send_data[1]  = 0;
-        //
-        //            	}
-        //            	if(send_data[1] == 0x0D){
-        //            		send_data[1]  = 0;
-        //            	}
-        if (send_data[4] != 0x09 || send_data[5] != 0x17)
-        {
-          send_data[1] = 0;
-        }
+      //            	if( send_data[4] == 0x09 && send_data[5] == 0x17){ // Block Blaster
+      //            		send_data[1]  = 0;
+      //            		//            		balster_data[0] = 0x55;
+      //            		//            		balster_data[1] = 0x0E;
+      //            		//            		balster_data[2] = 0x04;
+      //            		//            		balster_data[3] = 0x00;
+      //            		//            		appendCRC8CheckSum(balster_data,4);
+      //            		//            		balster_data[4] = 0x09;
+      //            		//            		balster_data[5] = 0x17;
+      //
+      //            	}
 
-        // 脱力指示
-        //            	if(send_data[1] == 0x0F){
-        //            		send_data[1]  = 0;
-        //            	}
-        if (send_data[1] == 0x1B)
-        {
-          // Get time stamp
-          time_stamp[0] = send_data[6];
-          time_stamp[1] = send_data[7];
+      //            	if(send_data[4] == 0x09 && send_data[5] == 0x18){ // Block LED Command
+      //            		send_data[1]  = 0;
+      //
+      //            	}
+      //            	if(send_data[1] == 0x0D){
+      //            		send_data[1]  = 0;
+      //            	}
 
-          // Linear X and Y
-          uint16_t linear_x = 256 * command_twist.linear.x + 1024;
-          uint16_t linear_y = 256 * command_twist.linear.y + 1024;
-          int16_t angular_z = 256 * command_twist.angular.z + 1024;
+      // 脱力指示
+      //            	if(send_data[1] == 0x0F){
+      //            		send_data[1]  = 0;
+      //            	}
+      if (send_data[1] == 0x1B)
+      {
+        // Get time stamp
+        time_stamp[0] = send_data[6];
+        time_stamp[1] = send_data[7];
 
-          send_data[13] &= 0xC0;
-          send_data[13] |= (linear_x >> 5) & 0x3F;
-          send_data[12] = 0x00;
-          send_data[12] |= linear_x << 3;
-          send_data[12] |= (linear_y >> 8) & 0x07;
-          send_data[11] = 0x00;
-          send_data[11] |= linear_y & 0xFF;
+        // Linear X and Y
+        uint16_t linear_x = 256 * command_twist.linear.x + 1024;
+        uint16_t linear_y = 256 * command_twist.linear.y + 1024;
+        int16_t angular_z = 256 * command_twist.angular.z + 1024;
 
-          send_data[17] = (angular_z >> 4) & 0xFF; //0x40;
-          send_data[16] = (angular_z << 4) | 0x08; //0x08;
+        send_data[13] &= 0xC0;
+        send_data[13] |= (linear_x >> 5) & 0x3F;
+        send_data[12] = 0x00;
+        send_data[12] |= linear_x << 3;
+        send_data[12] |= (linear_y >> 8) & 0x07;
+        send_data[11] = 0x00;
+        send_data[11] |= linear_y & 0xFF;
 
-          send_data[18] = 0x00;
+        send_data[17] = (angular_z >> 4) & 0xFF; //0x40;
+        send_data[16] = (angular_z << 4) | 0x08; //0x08;
 
-          send_data[19] = 0x02 | ((angular_z << 2) & 0xFF);
-          send_data[20] = (angular_z >> 6) & 0xFF; // 0x10;
+        send_data[18] = 0x00;
 
-          send_data[21] = 0x04;
-          send_data[22] = 0x04; // Enable Flag 4:x-y 8:yaw
-          send_data[23] = 0x00;
-          send_data[24] = 0x04;
+        send_data[19] = 0x02 | ((angular_z << 2) & 0xFF);
+        send_data[20] = (angular_z >> 6) & 0xFF; // 0x10;
 
-          send_data[send_data_size - 2] = 0;
-          send_data[send_data_size - 1] = 0;
-          appendCRC16CheckSum(send_data, send_data_size);
-          test_counter++;
-        }
-        if (send_data[1] == 0x14 && send_data[5] == 0x04)
-        {
-          // Linear X and Y
-          int16_t angular_y = -1024 * command_twist.angular.y;
-          int16_t angular_z = -1024 * command_twist.angular.z;
+        send_data[21] = 0x04;
+        send_data[22] = 0x04; // Enable Flag 4:x-y 8:yaw
+        send_data[23] = 0x00;
+        send_data[24] = 0x04;
 
-          send_data[14] = (angular_y >> 8) & 0xFF;
-          send_data[13] = angular_y & 0xFF;
-          send_data[16] = (angular_z >> 8) & 0xFF;
-          send_data[15] = angular_z & 0xFF;
+        send_data[send_data_size - 2] = 0;
+        send_data[send_data_size - 1] = 0;
+        appendCRC16CheckSum(send_data, send_data_size);
+        test_counter++;
+      }
+      if (send_data[1] == 0x14 && send_data[5] == 0x04)
+      {
+        // Linear X and Y
+        int16_t angular_y = -1024 * command_twist.angular.y;
+        int16_t angular_z = -1024 * command_twist.angular.z;
 
-          send_data[send_data_size - 2] = 0;
-          send_data[send_data_size - 1] = 0;
-          appendCRC16CheckSum(send_data, send_data_size);
-        }
+        send_data[14] = (angular_y >> 8) & 0xFF;
+        send_data[13] = angular_y & 0xFF;
+        send_data[16] = (angular_z >> 8) & 0xFF;
+        send_data[15] = angular_z & 0xFF;
 
-        // Smartphone touch event override
-        if (send_data[0] == 0x55 &&
-            send_data[1] == 0x0F &&
-            send_data[2] == 0x04 &&
-            send_data[3] == 0xA2 &&
-            send_data[4] == 0x09 &&
-            send_data[11] == 0x02)
-        {
-          send_data[11] = 0;
-          // Recalcuration CRC16
-          send_data[send_data_size - 2] = 0;
-          send_data[send_data_size - 1] = 0;
-          appendCRC16CheckSum(send_data, send_data_size);
-        }
-        UdpSendData(msg.can_id, send_data, send_data_size);
-        for (i = 0; i < send_data_size; i++)
-        {
-          can_command_buffer[can_command_buffer_wp] = send_data[i];
-          can_command_buffer_wp++;
-          can_command_buffer_wp %= BUFFER_SIZE;
-        }
+        send_data[send_data_size - 2] = 0;
+        send_data[send_data_size - 1] = 0;
+        appendCRC16CheckSum(send_data, send_data_size);
+      }
+
+      // Smartphone touch event override
+      if (send_data[0] == 0x55 &&
+          send_data[1] == 0x0F &&
+          send_data[2] == 0x04 &&
+          send_data[3] == 0xA2 &&
+          send_data[4] == 0x09 &&
+          send_data[11] == 0x02)
+      {
+        send_data[11] = 0;
+        // Recalcuration CRC16
+        send_data[send_data_size - 2] = 0;
+        send_data[send_data_size - 1] = 0;
+        appendCRC16CheckSum(send_data, send_data_size);
+      }
+      UdpSendData(msg.can_id, send_data, send_data_size);
+      for (i = 0; i < send_data_size; i++)
+      {
+        can_command_buffer[can_command_buffer_wp] = send_data[i];
+        can_command_buffer_wp++;
+        can_command_buffer_wp %= BUFFER_SIZE;
       }
     }
-
-    // others
-    if (buffer_rp2 != buffer_wp2)
-    {
-      msg = rx_msg_buffer2[buffer_rp2];
-      ret = parseCanData(msg.can_id, msg.data, msg.dlc, send_data, &send_data_size);
-      buffer_rp2++;
-      buffer_rp2 %= BUFFER_SIZE;
-      if (ret)
-      {
-        UdpSendData(msg.can_id, send_data, send_data_size);
-      }
-    }
-
-    // Transmit CAN Command
-    if (can_command_buffer_rp != can_command_buffer_wp)
-    {
-      int can_command_buffer_size = (can_command_buffer_wp - can_command_buffer_rp + BUFFER_SIZE) % BUFFER_SIZE;
-      if (can_command_buffer_size >= 8)
-      {
-        TxHeader2.DLC = 8;
-      }
-      else
-      {
-        TxHeader2.DLC = can_command_buffer_size;
-      }
-      TxHeader2.StdId = RxHeader1.StdId;
-      TxHeader2.ExtId = RxHeader1.ExtId;
-      TxHeader2.RTR = CAN_RTR_DATA;
-      TxHeader2.IDE = CAN_ID_STD;
-      TxHeader2.TransmitGlobalTime = DISABLE;
-      for (i = 0; i < TxHeader2.DLC; i++)
-      {
-        TxData2[i] = can_command_buffer[(can_command_buffer_rp + i) % BUFFER_SIZE];
-      }
-      /* Start Transmission process */
-      int ret = HAL_CAN_AddTxMessage(&hcan2, &TxHeader2, TxData2, &TxMailbox2);
-      if (ret == HAL_OK)
-      {
-        can_command_buffer_rp += TxHeader2.DLC;
-        can_command_buffer_rp %= BUFFER_SIZE;
-      }
-    }
-
-    MX_LWIP_Process();
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
   }
-  /* USER CODE END 3 */
+
+  // others
+  if (buffer_rp2 != buffer_wp2)
+  {
+    msg = rx_msg_buffer2[buffer_rp2];
+    ret = parseCanData(msg.can_id, msg.data, msg.dlc, send_data, &send_data_size);
+    buffer_rp2++;
+    buffer_rp2 %= BUFFER_SIZE;
+    if (ret)
+    {
+      if (command_blaster)
+      {
+        if (blaster_cycle == 1)
+        {
+          if (send_data[1] == 0x0F && send_data[4] == 0x17 && send_data[5] == 0x09){
+            // Blaster ACK
+            blaster_cycle++;
+          }else{
+        	  blaster_timeout++;
+          }
+          if(blaster_timeout>1000){
+        	  blaster_timeout = 0;
+        	  blaster_cycle = 0;
+        	  command_blaster = 0;
+          }
+        }
+      }
+      UdpSendData(msg.can_id, send_data, send_data_size);
+    }
+  }
+
+  // Transmit CAN Command
+  if (can_command_buffer_rp != can_command_buffer_wp)
+  {
+    int can_command_buffer_size = (can_command_buffer_wp - can_command_buffer_rp + BUFFER_SIZE) % BUFFER_SIZE;
+    if (can_command_buffer_size >= 8)
+    {
+      TxHeader2.DLC = 8;
+    }
+    else
+    {
+      TxHeader2.DLC = can_command_buffer_size;
+    }
+    TxHeader2.StdId = RxHeader1.StdId;
+    TxHeader2.ExtId = RxHeader1.ExtId;
+    TxHeader2.RTR = CAN_RTR_DATA;
+    TxHeader2.IDE = CAN_ID_STD;
+    TxHeader2.TransmitGlobalTime = DISABLE;
+    for (i = 0; i < TxHeader2.DLC; i++)
+    {
+      TxData2[i] = can_command_buffer[(can_command_buffer_rp + i) % BUFFER_SIZE];
+    }
+    /* Start Transmission process */
+    int ret = HAL_CAN_AddTxMessage(&hcan2, &TxHeader2, TxData2, &TxMailbox2);
+    if (ret == HAL_OK)
+    {
+      can_command_buffer_rp += TxHeader2.DLC;
+      can_command_buffer_rp %= BUFFER_SIZE;
+    }
+  }
+
+  MX_LWIP_Process();
+  /* USER CODE END WHILE */
+
+  /* USER CODE BEGIN 3 */
+}
+/* USER CODE END 3 */
 }
 
 /**

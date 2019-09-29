@@ -11,7 +11,7 @@ volatile int robomas_buffer_rp[CAN_ID_NUM];
 volatile int robomas_buffer_wp[CAN_ID_NUM];
 
 
-int parseCanData(uint8_t id, uint8_t* in_data, uint8_t in_data_size, uint8_t out_data[], uint8_t* out_data_size)
+int parseCanData(uint16_t id, uint8_t* in_data, uint8_t in_data_size, uint8_t out_data[], uint8_t* out_data_size)
 {
 	int i;
 
