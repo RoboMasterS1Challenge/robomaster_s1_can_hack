@@ -19,10 +19,10 @@ You should prepare these items.
 
 If you want to control via Wifi, please prepare these items.
 - Ethernet-Wifi Converter (WLI-UTX-AG300/C)
-- DCDC Converter (http://akizukidenshi.com/catalog/g/gK-09981/) or Mobile Battery for Wifi Converter
+- DC-DC Converter (http://akizukidenshi.com/catalog/g/gK-09981/) or Mobile Battery for Wifi Converter
 
 ### PS4 Controller Key Map
- - Left Axis : Linear X,and Linear Y
+ - Left Axis : Linear X and Linear Y
  - Right Axis : Gimbal Pitch and Gimbal Yaw
  - Right Axis push : Blaster
  - L2 : Enable control
