@@ -363,26 +363,6 @@ int main(void)
 
       }
 
-      //            	if( send_data[4] == 0x09 && send_data[5] == 0x17){ // Block Blaster
-      //            		send_data[1]  = 0;
-      //            		//            		blaster_data[0] = 0x55;
-      //            		//            		blaster_data[1] = 0x0E;
-      //            		//            		blaster_data[2] = 0x04;
-      //            		//            		blaster_data[3] = 0x00;
-      //            		//            		appendCRC8CheckSum(blaster_data,4);
-      //            		//            		blaster_data[4] = 0x09;
-      //            		//            		blaster_data[5] = 0x17;
-      //
-      //            	}
-
-      //            	if(send_data[4] == 0x09 && send_data[5] == 0x18){ // Block LED Command
-      //            		send_data[1]  = 0;
-      //
-      //            	}
-      //            	if(send_data[1] == 0x0D){
-      //            		send_data[1]  = 0;
-      //            	}
-
       // 脱力指示
       //            	if(send_data[1] == 0x0F){
       //            		send_data[1]  = 0;
