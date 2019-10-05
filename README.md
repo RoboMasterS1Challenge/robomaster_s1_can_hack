@@ -15,13 +15,19 @@ You should prepare these items.
 - CAN Tranceiver breakout board (https://www.amazon.co.jp/dp/B076HHVZM1) 
 - Wire harnes
 - 2.54mm Connector and Pin etc. (https://www.amazon.co.jp/gp/product/B071RK5STD/)
+- SONY PlayStation4(R) Controller
 
 If you want to control via Wifi, please prepare these items.
 - Ethernet-Wifi Converter (WLI-UTX-AG300/C)
 - DCDC Converter (http://akizukidenshi.com/catalog/g/gK-09981/) or Mobile Battery for Wifi Converter
 
-## How to install
+### PS4 Controller Key Map
+ - Left Axis : Linear X,and Linear Y
+ - Right Axis : Gimbal Pitch and Gimbal Yaw
+ - Right Axis push : Blaster
+ - L2 : Enable control
 
+## How to install
 Install ds4drv for PlayStation4(R) Controller
 
 $ sudo pip install ds4drv
