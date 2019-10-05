@@ -76,7 +76,7 @@ extern twist command_twist;
 extern int command_blaster;
 
 uint8_t time_stamp[2];
-uint16_t blaster_counter;
+uint16_t blaster_counter[2];
 
 /* USER CODE END PV */
 
@@ -193,6 +193,8 @@ int main(void)
   uint64_t test_counter = 0;
   int blaster_cycle = 0;
   int blaster_timeout =0;
+  blaster_counter[0] = 0;
+  blaster_counter[1] = 0;
   while (1)
   {
 
@@ -209,85 +211,167 @@ int main(void)
         {
           // kuratta oto 0x55,0x0F,0x04,0xA2,0x09,0x17,0x7C,0x09,0x00,0x3F,0x58,0xB0,0x01,0x10,0xE4
 
-          if (blaster_cycle == 0)
-          {
-            uint8_t balster_data[14];
-            balster_data[0] = 0x55;
-            balster_data[1] = 0x0E;
-            balster_data[2] = 0x04;
-            balster_data[3] = 0x00;
-            appendCRC8CheckSum(balster_data, 4);
-            balster_data[4] = 0x09;
-            balster_data[5] = 0x17;
-            balster_data[6] = blaster_counter & 0xFF;
-            balster_data[7] = blaster_counter >> 8;
-            balster_data[8] = 0x00;
-            balster_data[9] = 0x3F;
-            balster_data[10] = 0x51;
-            balster_data[11] = 0x11;
-            balster_data[12] = 0x00;
-            balster_data[13] = 0x00;
-            appendCRC8CheckSum(balster_data, 14);
-            blaster_counter++;
+            if (blaster_cycle == 0)
+            {
+                uint8_t blaster_data[26];
+                blaster_data[0] = 0x55;
+                blaster_data[1] = 0x1A;
+                blaster_data[2] = 0x04;
+                blaster_data[3] = 0x00;
+                appendCRC8CheckSum(blaster_data, 4);
+                blaster_data[4] = 0x09;
+                blaster_data[5] = 0x18;
+                blaster_data[6] = blaster_counter[0] & 0xFF;
+                blaster_data[7] = blaster_counter[0] >> 8;
+                blaster_data[8] = 0x00;
+                blaster_data[9] = 0x3F;
+                blaster_data[10] = 0x32;
+                blaster_data[11] = 0x01;
+                blaster_data[12] = 0xFF;
+                blaster_data[13] = 0x00;
+                blaster_data[14] = 0x00;
+                blaster_data[15] = 0x7F;
+                blaster_data[16] = 0x46;
+                blaster_data[17] = 0x00;
+                blaster_data[18] = 0xC8;
+                blaster_data[19] = 0x00;
+                blaster_data[20] = 0xC8;
+                blaster_data[21] = 0x00;
+                blaster_data[22] = 0x0F;
+                blaster_data[23] = 0x00;
+                blaster_data[24] = 0x00;
+                blaster_data[25] = 0x00;
+                appendCRC16CheckSum(blaster_data, 26);
+                blaster_counter[0]++;
+                for (i = 0; i < 26; i++)
+                {
+                  can_command_buffer[can_command_buffer_wp] = blaster_data[i];
+                  can_command_buffer_wp++;
+                  can_command_buffer_wp %= BUFFER_SIZE;
+                }
+                UdpSendData(msg.can_id, blaster_data, 26);
+                blaster_cycle++;
+            }
+            else if (blaster_cycle == 1)
+            {
+            uint8_t blaster_data[14];
+            blaster_data[0] = 0x55;
+            blaster_data[1] = 0x0E;
+            blaster_data[2] = 0x04;
+            blaster_data[3] = 0x00;
+            appendCRC8CheckSum(blaster_data, 4);
+            blaster_data[4] = 0x09;
+            blaster_data[5] = 0x17;
+            blaster_data[6] = blaster_counter[1] & 0xFF;
+            blaster_data[7] = blaster_counter[1] >> 8;
+            blaster_data[8] = 0x00;
+            blaster_data[9] = 0x3F;
+            blaster_data[10] = 0x51;
+            blaster_data[11] = 0x11;
+            blaster_data[12] = 0x00;
+            blaster_data[13] = 0x00;
+            appendCRC16CheckSum(blaster_data, 14);
+            blaster_counter[1]++;
             for (i = 0; i < 14; i++)
             {
-              can_command_buffer[can_command_buffer_wp] = balster_data[i];
+              can_command_buffer[can_command_buffer_wp] = blaster_data[i];
               can_command_buffer_wp++;
               can_command_buffer_wp %= BUFFER_SIZE;
             }
-            UdpSendData(msg.can_id, balster_data, 14);
+            UdpSendData(msg.can_id, blaster_data, 14);
             blaster_cycle++;
           }
           else if (blaster_cycle == 2)
           {
-            uint8_t balster_data4[22];
-            balster_data4[0] = 0x55;
-            balster_data4[1] = 0x16;
-            balster_data4[2] = 0x04;
-            balster_data4[3] = 0x00;
-            appendCRC8CheckSum(balster_data4, 4);
-            balster_data4[4] = 0x09;
-            balster_data4[5] = 0x17;
-            balster_data4[6] = blaster_counter & 0xFF;
-            balster_data4[7] = blaster_counter >> 8;
-            balster_data4[8] = 0x00;
-            balster_data4[9] = 0x3F;
-            balster_data4[10] = 0x55;
-            balster_data4[11] = 0x73;
-            balster_data4[12] = 0x00;
-            balster_data4[13] = 0xFF;
-            balster_data4[14] = 0x00;
-            balster_data4[15] = 0x01;
-            balster_data4[16] = 0x28;
-            balster_data4[17] = 0x00;
-            balster_data4[18] = 0x00;
-            balster_data4[19] = 0x00;
-            balster_data4[20] = 0x00;
-            balster_data4[21] = 0x00;
-            appendCRC8CheckSum(balster_data4, 22);
-            blaster_counter++;
+            uint8_t blaster_data[22];
+            blaster_data[0] = 0x55;
+            blaster_data[1] = 0x16;
+            blaster_data[2] = 0x04;
+            blaster_data[3] = 0x00;
+            appendCRC8CheckSum(blaster_data, 4);
+            blaster_data[4] = 0x09;
+            blaster_data[5] = 0x17;
+            blaster_data[6] = blaster_counter[1] & 0xFF;
+            blaster_data[7] = blaster_counter[1] >> 8;
+            blaster_data[8] = 0x00;
+            blaster_data[9] = 0x3F;
+            blaster_data[10] = 0x55;
+            blaster_data[11] = 0x73;
+            blaster_data[12] = 0x00;
+            blaster_data[13] = 0xFF;
+            blaster_data[14] = 0x00;
+            blaster_data[15] = 0x01;
+            blaster_data[16] = 0x28;
+            blaster_data[17] = 0x00;
+            blaster_data[18] = 0x00;
+            blaster_data[19] = 0x00;
+            blaster_data[20] = 0x00;
+            blaster_data[21] = 0x00;
+            appendCRC16CheckSum(blaster_data, 22);
+            blaster_counter[1]++;
             for (i = 0; i < 22; i++)
             {
-              can_command_buffer[can_command_buffer_wp] = balster_data4[i];
+              can_command_buffer[can_command_buffer_wp] = blaster_data[i];
               can_command_buffer_wp++;
               can_command_buffer_wp %= BUFFER_SIZE;
             }
-            UdpSendData(msg.can_id, balster_data4, 22);
-            blaster_cycle = 0;
-            command_blaster = 0;
+            UdpSendData(msg.can_id, blaster_data, 22);
+            blaster_cycle++;
+          }
+          else if (blaster_cycle == 3)
+          {
+              uint8_t blaster_data[26];
+              blaster_data[0] = 0x55;
+              blaster_data[1] = 0x1A;
+              blaster_data[2] = 0x04;
+              blaster_data[3] = 0x00;
+              appendCRC8CheckSum(blaster_data, 4);
+              blaster_data[4] = 0x09;
+              blaster_data[5] = 0x18;
+              blaster_data[6] = blaster_counter[0] & 0xFF;
+              blaster_data[7] = blaster_counter[0] >> 8;
+              blaster_data[8] = 0x00;
+              blaster_data[9] = 0x3F;
+              blaster_data[10] = 0x32;
+              blaster_data[11] = 0x05;
+              blaster_data[12] = 0xFF;
+              blaster_data[13] = 0x00;
+              blaster_data[14] = 0x00;
+              blaster_data[15] = 0x7F;
+              blaster_data[16] = 0x46;
+              blaster_data[17] = 0x00;
+              blaster_data[18] = 0x64;
+              blaster_data[19] = 0x00;
+              blaster_data[20] = 0x64;
+              blaster_data[21] = 0x00;
+              blaster_data[22] = 0x30;
+              blaster_data[23] = 0x00;
+              blaster_data[24] = 0x00;
+              blaster_data[25] = 0x00;
+              appendCRC16CheckSum(blaster_data, 26);
+              blaster_counter[0]++;
+              for (i = 0; i < 26; i++)
+              {
+                can_command_buffer[can_command_buffer_wp] = blaster_data[i];
+                can_command_buffer_wp++;
+                can_command_buffer_wp %= BUFFER_SIZE;
+              }
+              UdpSendData(msg.can_id, blaster_data, 26);
+              blaster_cycle = 0;
+              command_blaster = 0;
           }
 
       }
 
       //            	if( send_data[4] == 0x09 && send_data[5] == 0x17){ // Block Blaster
       //            		send_data[1]  = 0;
-      //            		//            		balster_data[0] = 0x55;
-      //            		//            		balster_data[1] = 0x0E;
-      //            		//            		balster_data[2] = 0x04;
-      //            		//            		balster_data[3] = 0x00;
-      //            		//            		appendCRC8CheckSum(balster_data,4);
-      //            		//            		balster_data[4] = 0x09;
-      //            		//            		balster_data[5] = 0x17;
+      //            		//            		blaster_data[0] = 0x55;
+      //            		//            		blaster_data[1] = 0x0E;
+      //            		//            		blaster_data[2] = 0x04;
+      //            		//            		blaster_data[3] = 0x00;
+      //            		//            		appendCRC8CheckSum(blaster_data,4);
+      //            		//            		blaster_data[4] = 0x09;
+      //            		//            		blaster_data[5] = 0x17;
       //
       //            	}
 
@@ -389,23 +473,6 @@ int main(void)
     buffer_rp2 %= BUFFER_SIZE;
     if (ret)
     {
-      if (command_blaster)
-      {
-        if (blaster_cycle == 1)
-        {
-          if (send_data[1] == 0x0F && send_data[4] == 0x17 && send_data[5] == 0x09){
-            // Blaster ACK
-            blaster_cycle++;
-          }else{
-        	  blaster_timeout++;
-          }
-          if(blaster_timeout>1000){
-        	  blaster_timeout = 0;
-        	  blaster_cycle = 0;
-        	  command_blaster = 0;
-          }
-        }
-      }
       UdpSendData(msg.can_id, send_data, send_data_size);
     }
   }

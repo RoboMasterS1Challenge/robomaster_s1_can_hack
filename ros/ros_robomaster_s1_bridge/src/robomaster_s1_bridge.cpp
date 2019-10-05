@@ -1,10 +1,5 @@
 #include "robomaster_s1_bridge.h"
 
-float hex2float(uint32_t hex_num)
-{
-  return *(float *)&hex_num;
-}
-
 // RoboMasterS1Bridge()
 // Constructor
 RoboMasterS1Bridge::RoboMasterS1Bridge()
