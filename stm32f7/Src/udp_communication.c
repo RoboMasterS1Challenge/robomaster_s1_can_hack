@@ -13,6 +13,7 @@ extern int parseBlasterCommandData(uint8_t* in_data, uint8_t in_data_size);
 
 twist command_twist;
 int command_blaster;
+extern uint8_t data_update_check;
 
 const uint16_t port_list[CAN_ID_NUM] = {
 		0x201 + 10000,
@@ -49,6 +50,7 @@ void UdpRecvDataCallback(void *arg, struct udp_pcb *pcb, struct pbuf *p, struct 
   		if(p->len == TWIST_COMMAND_SIZE){
   			memcpy(buf,p->payload,TWIST_COMMAND_SIZE);
   			command_twist = parseTwistCommandData(buf, TWIST_COMMAND_SIZE);
+  			data_update_check = 0;
               //UdpSendData(0,buf,TWIST_COMMAND_SIZE);
   		}
 		if(p->len == BLASTER_COMMAND_SIZE){

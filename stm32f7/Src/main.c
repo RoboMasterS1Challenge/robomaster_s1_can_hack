@@ -47,6 +47,8 @@
 CAN_HandleTypeDef hcan1;
 CAN_HandleTypeDef hcan2;
 
+TIM_HandleTypeDef htim2;
+
 /* USER CODE BEGIN PV */
 CAN_TxHeaderTypeDef TxHeader1;
 CAN_RxHeaderTypeDef RxHeader1;
@@ -77,6 +79,12 @@ extern int command_blaster;
 
 uint8_t time_stamp[2];
 uint16_t blaster_counter[2];
+uint8_t timer1s_flag;
+uint8_t timer1s_counter;
+uint8_t timer10ms_flag;
+uint8_t timer100ms_flag;
+uint8_t timer100ms_counter;
+uint8_t data_update_check;
 
 /* USER CODE END PV */
 
@@ -85,6 +93,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_CAN1_Init(void);
 static void MX_CAN2_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 static void CAN_FilterConfig(void);
 extern void UdpSendData(uint8_t id, uint8_t *send_data, uint8_t send_data_size);
@@ -106,6 +115,7 @@ int main(void)
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
+  
 
   /* MCU Configuration--------------------------------------------------------*/
 
@@ -128,6 +138,7 @@ int main(void)
   MX_LWIP_Init();
   MX_CAN1_Init();
   MX_CAN2_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 
   /* Configure the CAN peripheral */
@@ -195,8 +206,27 @@ int main(void)
   int blaster_timeout =0;
   blaster_counter[0] = 0;
   blaster_counter[1] = 0;
+
+  HAL_TIM_Base_Start_IT(&htim2);
+  timer1s_flag = 0;
+  timer1s_counter = 0;
+  timer10ms_flag = 0;
+  data_update_check = 0;
   while (1)
   {
+	if(timer10ms_flag){
+		timer10ms_flag = 0;
+		data_update_check++;
+		if(data_update_check >= 10){
+			// Reset all command
+	        command_twist.linear.x = 0;
+	        command_twist.linear.y = 0;
+	        command_twist.linear.z = 0;
+	        command_twist.angular.x = 0;
+	        command_twist.angular.y = 0;
+	        command_twist.angular.z = 0;
+		}
+	}
 
     // 0x201 Intelligent Controller Command
     if (buffer_rp1 != buffer_wp1)
@@ -207,8 +237,9 @@ int main(void)
       buffer_rp1 %= BUFFER_SIZE;
       if (ret)
       {
-        if (command_blaster)
+        if (command_blaster || timer1s_flag)
         {
+        	timer1s_flag--;
           // kuratta oto 0x55,0x0F,0x04,0xA2,0x09,0x17,0x7C,0x09,0x00,0x3F,0x58,0xB0,0x01,0x10,0xE4
 
             if (blaster_cycle == 0)
@@ -488,11 +519,11 @@ int main(void)
   }
 
   MX_LWIP_Process();
-  /* USER CODE END WHILE */
+    /* USER CODE END WHILE */
 
-  /* USER CODE BEGIN 3 */
+    /* USER CODE BEGIN 3 */
 }
-/* USER CODE END 3 */
+  /* USER CODE END 3 */
 }
 
 /**
@@ -504,14 +535,14 @@ void SystemClock_Config(void)
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
-  /** Configure LSE Drive Capability
+  /** Configure LSE Drive Capability 
   */
   HAL_PWR_EnableBkUpAccess();
-  /** Configure the main internal regulator output voltage
+  /** Configure the main internal regulator output voltage 
   */
   __HAL_RCC_PWR_CLK_ENABLE();
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
-  /** Initializes the CPU, AHB and APB busses clocks
+  /** Initializes the CPU, AHB and APB busses clocks 
   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
@@ -525,15 +556,16 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  /** Activate the Over-Drive mode
+  /** Activate the Over-Drive mode 
   */
   if (HAL_PWREx_EnableOverDrive() != HAL_OK)
   {
     Error_Handler();
   }
-  /** Initializes the CPU, AHB and APB busses clocks
+  /** Initializes the CPU, AHB and APB busses clocks 
   */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
@@ -579,6 +611,7 @@ static void MX_CAN1_Init(void)
   /* USER CODE BEGIN CAN1_Init 2 */
 
   /* USER CODE END CAN1_Init 2 */
+
 }
 
 /**
@@ -615,6 +648,52 @@ static void MX_CAN2_Init(void)
   /* USER CODE BEGIN CAN2_Init 2 */
 
   /* USER CODE END CAN2_Init 2 */
+
+}
+
+/**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 96-1;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 10000-1;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+
 }
 
 /**
@@ -635,7 +714,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOG_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LD3_Pin | LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, LD3_Pin|LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(USB_PowerSwitchOn_GPIO_Port, USB_PowerSwitchOn_Pin, GPIO_PIN_RESET);
@@ -647,14 +726,14 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(USER_Btn_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : LD3_Pin LD2_Pin */
-  GPIO_InitStruct.Pin = LD3_Pin | LD2_Pin;
+  GPIO_InitStruct.Pin = LD3_Pin|LD2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pins : STLK_RX_Pin STLK_TX_Pin */
-  GPIO_InitStruct.Pin = STLK_RX_Pin | STLK_TX_Pin;
+  GPIO_InitStruct.Pin = STLK_RX_Pin|STLK_TX_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
@@ -675,7 +754,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(USB_OverCurrent_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : USB_SOF_Pin USB_ID_Pin USB_DM_Pin USB_DP_Pin */
-  GPIO_InitStruct.Pin = USB_SOF_Pin | USB_ID_Pin | USB_DM_Pin | USB_DP_Pin;
+  GPIO_InitStruct.Pin = USB_SOF_Pin|USB_ID_Pin|USB_DM_Pin|USB_DP_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
@@ -687,6 +766,7 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(USB_VBUS_GPIO_Port, &GPIO_InitStruct);
+
 }
 
 /* USER CODE BEGIN 4 */
@@ -952,12 +1032,24 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   /* USER CODE BEGIN Callback 0 */
 
   /* USER CODE END Callback 0 */
-  if (htim->Instance == TIM10)
-  {
+  if (htim->Instance == TIM10) {
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
-
+  if (htim == &htim2){
+	// 10msec Timer
+	timer1s_counter++;
+	if(timer1s_counter == 100){
+	  timer1s_counter = 0;
+	  timer1s_flag = 100;
+	}
+	timer100ms_counter++;
+	if(timer100ms_counter == 10){
+	  timer100ms_counter = 0;
+	  timer100ms_flag = 1;
+	}
+	timer10ms_flag = 1;
+  }
   /* USER CODE END Callback 1 */
 }
 
@@ -973,7 +1065,7 @@ void Error_Handler(void)
   /* USER CODE END Error_Handler_Debug */
 }
 
-#ifdef USE_FULL_ASSERT
+#ifdef  USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number
   *         where the assert_param error has occurred.
@@ -982,7 +1074,7 @@ void Error_Handler(void)
   * @retval None
   */
 void assert_failed(uint8_t *file, uint32_t line)
-{
+{ 
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
      tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
