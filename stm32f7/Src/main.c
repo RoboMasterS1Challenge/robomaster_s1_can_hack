@@ -79,11 +79,15 @@ extern int command_blaster;
 
 uint8_t time_stamp[2];
 uint16_t blaster_counter[2];
-uint8_t timer1s_flag;
-uint8_t timer1s_counter;
-uint8_t timer10ms_flag;
-uint8_t timer100ms_flag;
-uint8_t timer100ms_counter;
+uint8_t timer10sec_flag;
+uint32_t timer10sec_counter;
+uint8_t timer1sec_flag;
+uint32_t timer1sec_counter;
+uint8_t timer10msec_flag;
+uint32_t timer10msec_counter;
+uint8_t timer100msec_flag;
+uint32_t timer100msec_counter;
+
 uint8_t data_update_check;
 
 /* USER CODE END PV */
@@ -96,8 +100,8 @@ static void MX_CAN2_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 static void CAN_FilterConfig(void);
-extern void UdpSendData(uint8_t id, uint8_t *send_data, uint8_t send_data_size);
-extern void StartUdp(uint8_t *ip_addr);
+extern void sendUdpData(uint8_t id, uint8_t *send_data, uint8_t send_data_size);
+extern void startUdp(uint8_t *ip_addr);
 extern int parseCanData(uint8_t id, uint8_t *in_data, uint8_t in_data_size, uint8_t out_data[], uint8_t *out_data_size);
 /* USER CODE END PFP */
 
@@ -123,6 +127,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+  HAL_Delay(1000); // 1sec wait for boot
 
   /* USER CODE END Init */
 
@@ -145,11 +150,11 @@ int main(void)
   CAN_FilterConfig();
 
   /*## Start the CAN peripheral ###########################################*/
-  if (HAL_CAN_Start(&hcan1) != HAL_OK)
-  {
-    /* Start Error */
-    Error_Handler();
-  }
+//  if (HAL_CAN_Start(&hcan1) != HAL_OK)
+//  {
+//    /* Start Error */
+//    Error_Handler();
+//  }
 
   if (HAL_CAN_Start(&hcan2) != HAL_OK)
   {
@@ -158,11 +163,11 @@ int main(void)
   }
 
   /*## Activate CAN RX notification #######################################*/
-  if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK)
-  {
-    /* Notification Error */
-    Error_Handler();
-  }
+//  if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK)
+//  {
+//    /* Notification Error */
+//    Error_Handler();
+//  }
 
   if (HAL_CAN_ActivateNotification(&hcan2, CAN_IT_RX_FIFO1_MSG_PENDING) != HAL_OK)
   {
@@ -170,11 +175,11 @@ int main(void)
     Error_Handler();
   }
 
-  if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_FULL) != HAL_OK)
-  {
-    /* Notification Error */
-    Error_Handler();
-  }
+//  if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_FULL) != HAL_OK)
+//  {
+//    /* Notification Error */
+//    Error_Handler();
+//  }
 
   if (HAL_CAN_ActivateNotification(&hcan2, CAN_IT_RX_FIFO1_FULL) != HAL_OK)
   {
@@ -194,7 +199,7 @@ int main(void)
   can_command_buffer_wp = 0;
 
   uint8_t send_ip_addr[] = {192, 168, 0, 255};
-  StartUdp(send_ip_addr);
+  startUdp(send_ip_addr);
 
   CANRxMsg msg;
   uint8_t send_data[255];
@@ -203,30 +208,193 @@ int main(void)
   int ret = 0;
   uint64_t test_counter = 0;
   int blaster_cycle = 0;
-  int blaster_timeout =0;
+  int blaster_timeout = 0;
   blaster_counter[0] = 0;
   blaster_counter[1] = 0;
 
   HAL_TIM_Base_Start_IT(&htim2);
-  timer1s_flag = 0;
-  timer1s_counter = 0;
-  timer10ms_flag = 0;
+  timer10sec_flag = 0;
+  timer10sec_counter = 0;
+  timer1sec_flag = 0;
+  timer1sec_counter = 0;
+  timer100msec_flag = 0;
+  timer100msec_counter = 0;
+  timer10msec_flag = 0;
+  timer10msec_counter = 0;
   data_update_check = 0;
+  int data_update_inhibit_counter = 0;
+
+  int init_lab_mode = 0;
   while (1)
   {
-	if(timer10ms_flag){
-		timer10ms_flag = 0;
-		data_update_check++;
-		if(data_update_check >= 10){
-			// Reset all command
-	        command_twist.linear.x = 0;
-	        command_twist.linear.y = 0;
-	        command_twist.linear.z = 0;
-	        command_twist.angular.x = 0;
-	        command_twist.angular.y = 0;
-	        command_twist.angular.z = 0;
-		}
-	}
+    // 10msec TASK
+    if (timer10msec_flag)
+    {
+      timer10msec_flag = 0;
+
+      // Data Update Check Function
+      data_update_check++;
+      if (data_update_check >= 10)
+      {
+        // Reset all command
+        command_twist.linear.x = 0;
+        command_twist.linear.y = 0;
+        command_twist.linear.z = 0;
+        command_twist.angular.x = 0;
+        command_twist.angular.y = 0;
+        command_twist.angular.z = 0;
+        data_update_inhibit_counter = 300;
+      }
+      // Data Update Inhibit Counter
+      if(data_update_inhibit_counter > 0){
+          command_twist.linear.x = 0;
+          command_twist.linear.y = 0;
+          command_twist.linear.z = 0;
+          command_twist.angular.x = 0;
+          command_twist.angular.y = 0;
+          command_twist.angular.z = 0;
+      }
+
+      if(data_update_inhibit_counter > 0){
+          data_update_inhibit_counter--;
+      }
+
+
+    }
+
+    // 100msec TASK
+    if (timer100msec_flag)
+    {
+      timer100msec_flag = 0;
+    }
+    
+    // 1sec TASK
+    if (timer1sec_flag)
+    {
+      //timer1sec_flag = 0;
+    }
+    
+    // 10sec TASK
+    if (timer10sec_flag)
+    {
+      timer10sec_flag = 0;
+//boot command
+
+
+      uint8_t boot_data1[0x1B] = {0x55,0x1B,0x04,0x75,0x09,0xC3,0x00,0x00,0x00,0x3F,0x60,0x00,0x04,0x20,0x00,0x01,0x00,0x40,0x00,0x02,0x10,0x00,0x03,0x00,0x00,0x6E,0x3C};
+      uint8_t boot_data2[0x14] = {0x55,0x14,0x04,0x6D,0x09,0x04,0x00,0x00,0x00,0x04,0x69,0x08,0x05,0x00,0x00,0x00,0x00,0x01,0x9B,0x56};
+      uint8_t boot_data3[0x0F] = {0x55,0x0F,0x04,0xA2,0x09,0x04,0x02,0x00,0x40,0x04,0x4C,0x02,0x00,0xC0,0x34};
+      uint8_t boot_data4[0x0E] = {0x55,0x0E,0x04,0x66,0x09,0x03,0x00,0x00,0x00,0x3F,0x3F,0x02,0xF8,0x8F};
+      uint8_t boot_data5[0x15] = {0x55,0x15,0x04,0xA9,0xF1,0xC3,0x00,0x00,0x00,0x03,0xD7,0x01,0x07,0x00,0x02,0x00,0x00,0x00,0x00,0x92,0xA0};
+      uint8_t boot_data6[0x12] = {0x55,0x12,0x04,0xC7,0x09,0x03,0x01,0x00,0x40,0x48,0x01,0x09,0x00,0x00,0x00,0x03,0xDF,0x6D};
+      uint8_t boot_data7[0x1C] = {0x55,0x1C,0x04,0x1B,0x09,0x03,0x02,0x00,0x40,0x48,0x03,0x09,0x00,0x03,0x00,0x01,0xFB,0xDC,0xF5,0xD7,0x03,0x00,0x02,0x00,0x01,0x00,0x67,0x89};
+      uint8_t boot_data8[0x12] = {0x55,0x12,0x04,0xC7,0x09,0x03,0x03,0x00,0x40,0x48,0x01,0x09,0x00,0x00,0x00,0x03,0x91,0x35};
+      uint8_t boot_data9[0x24] = {0x55,0x24,0x04,0x40,0x09,0x03,0x04,0x00,0x40,0x48,0x03,0x09,0x01,0x03,0x00,0x02,0xA7,0x02,0x29,0x88,0x03,0x00,0x02,0x00,0x66,0x3E,0x3E,0x4C,0x03,0x00,0x02,0x00,0x32,0x00,0x85,0x4C};
+
+      for (i = 0; i < 0x1B; i++)
+      {
+        can_command_buffer[can_command_buffer_wp] = boot_data1[i];
+        can_command_buffer_wp++;
+        can_command_buffer_wp %= BUFFER_SIZE;
+      }
+      for (i = 0; i < 0x14; i++)
+      {
+        can_command_buffer[can_command_buffer_wp] = boot_data2[i];
+        can_command_buffer_wp++;
+        can_command_buffer_wp %= BUFFER_SIZE;
+      }
+      for (i = 0; i < 0x0F; i++)
+      {
+        can_command_buffer[can_command_buffer_wp] = boot_data3[i];
+        can_command_buffer_wp++;
+        can_command_buffer_wp %= BUFFER_SIZE;
+      }
+      for (i = 0; i < 0x0E; i++)
+      {
+        can_command_buffer[can_command_buffer_wp] = boot_data4[i];
+        can_command_buffer_wp++;
+        can_command_buffer_wp %= BUFFER_SIZE;
+      }
+      for (i = 0; i < 0x15; i++)
+      {
+        can_command_buffer[can_command_buffer_wp] = boot_data5[i];
+        can_command_buffer_wp++;
+        can_command_buffer_wp %= BUFFER_SIZE;
+      }
+      for (i = 0; i < 0x12; i++)
+      {
+        can_command_buffer[can_command_buffer_wp] = boot_data6[i];
+        can_command_buffer_wp++;
+        can_command_buffer_wp %= BUFFER_SIZE;
+      }
+      for (i = 0; i < 0x1C; i++)
+      {
+        can_command_buffer[can_command_buffer_wp] = boot_data7[i];
+        can_command_buffer_wp++;
+        can_command_buffer_wp %= BUFFER_SIZE;
+      }
+      for (i = 0; i < 0x12; i++)
+      {
+        can_command_buffer[can_command_buffer_wp] = boot_data8[i];
+        can_command_buffer_wp++;
+        can_command_buffer_wp %= BUFFER_SIZE;
+      }
+      for (i = 0; i < 0x24; i++)
+      {
+        can_command_buffer[can_command_buffer_wp] = boot_data9[i];
+        can_command_buffer_wp++;
+        can_command_buffer_wp %= BUFFER_SIZE;
+      }
+
+      // LED on
+      uint8_t boot_data10[0x1A] = {0x55,0x1A,0x04,0xB1,0x09,0x18,0x16,0x00,0x00,0x3F,0x32,0x02,0xFF,0x00,0xFF,0xFF,0xFF,0x00,0xF4,0x01,0xF4,0x01,0x3F,0x00,0xC4,0xE3};
+
+      for (i = 0; i < 0x1A; i++)
+      {
+        can_command_buffer[can_command_buffer_wp] = boot_data10[i];
+        can_command_buffer_wp++;
+        can_command_buffer_wp %= BUFFER_SIZE;
+      }
+
+      // Enable Lab
+//      uint8_t lab_init_data1[0x10] = {0x55,0x10,0x04,0x56,0x09,0x03,0x05,0x00,0x40,0x48,0x04,0x00,0x09,0x00,0x76,0x69};
+//      uint8_t lab_init_data2[0x12] = {0x55,0x12,0x04,0xC7,0x09,0x03,0x06,0x00,0x40,0x48,0x01,0x09,0x00,0x00,0x00,0x03,0x2A,0xA9};
+//      uint8_t lab_init_data3[0x24] = {0x55,0x24,0x04,0x40,0x09,0x03,0x07,0x00,0x40,0x48,0x03,0x09,0x00,0x03,0x00,0x02,0xFB,0xDC,0xF5,0xD7,0x03,0x00,0x02,0x00,0x4B,0xEF,0x47,0xAB,0x03,0x00,0x02,0x00,0x01,0x00,0xAC,0x64};
+//      uint8_t lab_init_data4[0x12] = {0x55,0x12,0x04,0xC7,0x09,0x03,0x08,0x00,0x40,0x48,0x01,0x09,0x00,0x00,0x00,0x03,0xD1,0x28};
+      uint8_t lab_init_data5[0x3C] = {0x55,0x3C,0x04,0xDA,0x09,0x03,0x09,0x00,0x40,0x48,0x03,0x09,0x02,0x03,0x00,0x05,0x09,0xA3,0x26,0xE2,0x03,0x00,0x02,0x00,0xB3,0xF7,0xE6,0x47,0x03,0x00,0x02,0x00,0xF4,0x1D,0x1C,0xDC,0x03,0x00,0x02,0x00,0x03,0xC5,0x58,0x08,0x03,0x00,0x02,0x00,0x42,0xEE,0x13,0x1D,0x03,0x00,0x02,0x00,0x05,0x00,0xB5,0xC7};
+
+//      for (i = 0; i < 0x10; i++)
+//      {
+//        can_command_buffer[can_command_buffer_wp] = lab_init_data1[i];
+//        can_command_buffer_wp++;
+//        can_command_buffer_wp %= BUFFER_SIZE;
+//      }
+//      for (i = 0; i < 0x12; i++)
+//      {
+//        can_command_buffer[can_command_buffer_wp] = lab_init_data2[i];
+//        can_command_buffer_wp++;
+//        can_command_buffer_wp %= BUFFER_SIZE;
+//      }
+//      for (i = 0; i < 0x24; i++)
+//      {
+//        can_command_buffer[can_command_buffer_wp] = lab_init_data3[i];
+//        can_command_buffer_wp++;
+//        can_command_buffer_wp %= BUFFER_SIZE;
+//      }
+//      for (i = 0; i < 0x12; i++)
+//      {
+//        can_command_buffer[can_command_buffer_wp] = lab_init_data4[i];
+//        can_command_buffer_wp++;
+//        can_command_buffer_wp %= BUFFER_SIZE;
+//      }
+      for (i = 0; i < 0x3C; i++)
+      {
+        can_command_buffer[can_command_buffer_wp] = lab_init_data5[i];
+        can_command_buffer_wp++;
+        can_command_buffer_wp %= BUFFER_SIZE;
+      }
+
+    }
 
     // 0x201 Intelligent Controller Command
     if (buffer_rp1 != buffer_wp1)
@@ -237,54 +405,54 @@ int main(void)
       buffer_rp1 %= BUFFER_SIZE;
       if (ret)
       {
-        if (command_blaster || timer1s_flag)
+        if (command_blaster || timer1sec_flag)
         {
-        	timer1s_flag--;
+          timer1sec_flag--;
           // kuratta oto 0x55,0x0F,0x04,0xA2,0x09,0x17,0x7C,0x09,0x00,0x3F,0x58,0xB0,0x01,0x10,0xE4
 
-            if (blaster_cycle == 0)
+          if (blaster_cycle == 0)
+          {
+            uint8_t blaster_data[26];
+            blaster_data[0] = 0x55;
+            blaster_data[1] = 0x1A;
+            blaster_data[2] = 0x04;
+            blaster_data[3] = 0x00;
+            appendCRC8CheckSum(blaster_data, 4);
+            blaster_data[4] = 0x09;
+            blaster_data[5] = 0x18;
+            blaster_data[6] = blaster_counter[0] & 0xFF;
+            blaster_data[7] = blaster_counter[0] >> 8;
+            blaster_data[8] = 0x00;
+            blaster_data[9] = 0x3F;
+            blaster_data[10] = 0x32;
+            blaster_data[11] = 0x01;
+            blaster_data[12] = 0xFF;
+            blaster_data[13] = 0x00;
+            blaster_data[14] = 0x00;
+            blaster_data[15] = 0x7F;
+            blaster_data[16] = 0x46;
+            blaster_data[17] = 0x00;
+            blaster_data[18] = 0xC8;
+            blaster_data[19] = 0x00;
+            blaster_data[20] = 0xC8;
+            blaster_data[21] = 0x00;
+            blaster_data[22] = 0x0F;
+            blaster_data[23] = 0x00;
+            blaster_data[24] = 0x00;
+            blaster_data[25] = 0x00;
+            appendCRC16CheckSum(blaster_data, 26);
+            blaster_counter[0]++;
+            for (i = 0; i < 26; i++)
             {
-                uint8_t blaster_data[26];
-                blaster_data[0] = 0x55;
-                blaster_data[1] = 0x1A;
-                blaster_data[2] = 0x04;
-                blaster_data[3] = 0x00;
-                appendCRC8CheckSum(blaster_data, 4);
-                blaster_data[4] = 0x09;
-                blaster_data[5] = 0x18;
-                blaster_data[6] = blaster_counter[0] & 0xFF;
-                blaster_data[7] = blaster_counter[0] >> 8;
-                blaster_data[8] = 0x00;
-                blaster_data[9] = 0x3F;
-                blaster_data[10] = 0x32;
-                blaster_data[11] = 0x01;
-                blaster_data[12] = 0xFF;
-                blaster_data[13] = 0x00;
-                blaster_data[14] = 0x00;
-                blaster_data[15] = 0x7F;
-                blaster_data[16] = 0x46;
-                blaster_data[17] = 0x00;
-                blaster_data[18] = 0xC8;
-                blaster_data[19] = 0x00;
-                blaster_data[20] = 0xC8;
-                blaster_data[21] = 0x00;
-                blaster_data[22] = 0x0F;
-                blaster_data[23] = 0x00;
-                blaster_data[24] = 0x00;
-                blaster_data[25] = 0x00;
-                appendCRC16CheckSum(blaster_data, 26);
-                blaster_counter[0]++;
-                for (i = 0; i < 26; i++)
-                {
-                  can_command_buffer[can_command_buffer_wp] = blaster_data[i];
-                  can_command_buffer_wp++;
-                  can_command_buffer_wp %= BUFFER_SIZE;
-                }
-                UdpSendData(msg.can_id, blaster_data, 26);
-                blaster_cycle++;
+              can_command_buffer[can_command_buffer_wp] = blaster_data[i];
+              can_command_buffer_wp++;
+              can_command_buffer_wp %= BUFFER_SIZE;
             }
-            else if (blaster_cycle == 1)
-            {
+            sendUdpData(msg.can_id, blaster_data, 26);
+            blaster_cycle++;
+          }
+          else if (blaster_cycle == 1)
+          {
             uint8_t blaster_data[14];
             blaster_data[0] = 0x55;
             blaster_data[1] = 0x0E;
@@ -309,7 +477,7 @@ int main(void)
               can_command_buffer_wp++;
               can_command_buffer_wp %= BUFFER_SIZE;
             }
-            UdpSendData(msg.can_id, blaster_data, 14);
+            sendUdpData(msg.can_id, blaster_data, 14);
             blaster_cycle++;
           }
           else if (blaster_cycle == 2)
@@ -346,183 +514,194 @@ int main(void)
               can_command_buffer_wp++;
               can_command_buffer_wp %= BUFFER_SIZE;
             }
-            UdpSendData(msg.can_id, blaster_data, 22);
+            sendUdpData(msg.can_id, blaster_data, 22);
             blaster_cycle++;
           }
           else if (blaster_cycle == 3)
           {
-              uint8_t blaster_data[26];
-              blaster_data[0] = 0x55;
-              blaster_data[1] = 0x1A;
-              blaster_data[2] = 0x04;
-              blaster_data[3] = 0x00;
-              appendCRC8CheckSum(blaster_data, 4);
-              blaster_data[4] = 0x09;
-              blaster_data[5] = 0x18;
-              blaster_data[6] = blaster_counter[0] & 0xFF;
-              blaster_data[7] = blaster_counter[0] >> 8;
-              blaster_data[8] = 0x00;
-              blaster_data[9] = 0x3F;
-              blaster_data[10] = 0x32;
-              blaster_data[11] = 0x05;
-              blaster_data[12] = 0xFF;
-              blaster_data[13] = 0x00;
-              blaster_data[14] = 0x00;
-              blaster_data[15] = 0x7F;
-              blaster_data[16] = 0x46;
-              blaster_data[17] = 0x00;
-              blaster_data[18] = 0x64;
-              blaster_data[19] = 0x00;
-              blaster_data[20] = 0x64;
-              blaster_data[21] = 0x00;
-              blaster_data[22] = 0x30;
-              blaster_data[23] = 0x00;
-              blaster_data[24] = 0x00;
-              blaster_data[25] = 0x00;
-              appendCRC16CheckSum(blaster_data, 26);
-              blaster_counter[0]++;
-              for (i = 0; i < 26; i++)
-              {
-                can_command_buffer[can_command_buffer_wp] = blaster_data[i];
-                can_command_buffer_wp++;
-                can_command_buffer_wp %= BUFFER_SIZE;
-              }
-              UdpSendData(msg.can_id, blaster_data, 26);
-              blaster_cycle = 0;
-              command_blaster = 0;
+            uint8_t blaster_data[26];
+            blaster_data[0] = 0x55;
+            blaster_data[1] = 0x1A;
+            blaster_data[2] = 0x04;
+            blaster_data[3] = 0x00;
+            appendCRC8CheckSum(blaster_data, 4);
+            blaster_data[4] = 0x09;
+            blaster_data[5] = 0x18;
+            blaster_data[6] = blaster_counter[0] & 0xFF;
+            blaster_data[7] = blaster_counter[0] >> 8;
+            blaster_data[8] = 0x00;
+            blaster_data[9] = 0x3F;
+            blaster_data[10] = 0x32;
+            blaster_data[11] = 0x05;
+            blaster_data[12] = 0xFF;
+            blaster_data[13] = 0x00;
+            blaster_data[14] = 0x00;
+            blaster_data[15] = 0x7F;
+            blaster_data[16] = 0x46;
+            blaster_data[17] = 0x00;
+            blaster_data[18] = 0x64;
+            blaster_data[19] = 0x00;
+            blaster_data[20] = 0x64;
+            blaster_data[21] = 0x00;
+            blaster_data[22] = 0x30;
+            blaster_data[23] = 0x00;
+            blaster_data[24] = 0x00;
+            blaster_data[25] = 0x00;
+            appendCRC16CheckSum(blaster_data, 26);
+            blaster_counter[0]++;
+            for (i = 0; i < 26; i++)
+            {
+              can_command_buffer[can_command_buffer_wp] = blaster_data[i];
+              can_command_buffer_wp++;
+              can_command_buffer_wp %= BUFFER_SIZE;
+            }
+            sendUdpData(msg.can_id, blaster_data, 26);
+            blaster_cycle = 0;
+            command_blaster = 0;
           }
+        }
 
+        // 脱力指示
+        //            	if(send_data[1] == 0x0F){
+        //            		send_data[1]  = 0;
+        //            	}
+        if (send_data[1] == 0x1B)
+        {
+          // Get time stamp
+          time_stamp[0] = send_data[6];
+          time_stamp[1] = send_data[7];
+
+          // Linear X and Y
+          uint16_t linear_x = 256 * command_twist.linear.x + 1024;
+          uint16_t linear_y = 256 * command_twist.linear.y + 1024;
+          int16_t angular_z = 256 * command_twist.angular.z + 1024;
+
+          send_data[13] &= 0xC0;
+          send_data[13] |= (linear_x >> 5) & 0x3F;
+          send_data[12] = 0x00;
+          send_data[12] |= linear_x << 3;
+          send_data[12] |= (linear_y >> 8) & 0x07;
+          send_data[11] = 0x00;
+          send_data[11] |= linear_y & 0xFF;
+
+          send_data[17] = (angular_z >> 4) & 0xFF; //0x40;
+          send_data[16] = (angular_z << 4) | 0x08; //0x08;
+
+          send_data[18] = 0x00;
+
+          send_data[19] = 0x02 | ((angular_z << 2) & 0xFF);
+          send_data[20] = (angular_z >> 6) & 0xFF; // 0x10;
+
+          send_data[21] = 0x04;
+          send_data[22] = 0x0C; // Enable Flag 4:x-y 8:yaw 0x0c
+          send_data[23] = 0x00;
+          send_data[24] = 0x04;
+
+          send_data[send_data_size - 2] = 0;
+          send_data[send_data_size - 1] = 0;
+          appendCRC16CheckSum(send_data, send_data_size);
+          test_counter++;
+        }
+        if (send_data[1] == 0x14 && send_data[5] == 0x04)
+        {
+          // Linear X and Y
+          int16_t angular_y = -1024 * command_twist.angular.y;
+          int16_t angular_z = -1024 * command_twist.angular.z;
+
+          send_data[14] = (angular_y >> 8) & 0xFF;
+          send_data[13] = angular_y & 0xFF;
+          send_data[16] = (angular_z >> 8) & 0xFF;
+          send_data[15] = angular_z & 0xFF;
+
+          send_data[send_data_size - 2] = 0;
+          send_data[send_data_size - 1] = 0;
+          appendCRC16CheckSum(send_data, send_data_size);
+        }
+
+        // Smartphone touch event override
+        if (send_data[0] == 0x55 &&
+            send_data[1] == 0x0F &&
+            send_data[2] == 0x04 &&
+            send_data[3] == 0xA2 &&
+            send_data[4] == 0x09 &&
+            send_data[11] == 0x02)
+        {
+          send_data[11] = 0;
+          // Recalcuration CRC16
+          send_data[send_data_size - 2] = 0;
+          send_data[send_data_size - 1] = 0;
+          appendCRC16CheckSum(send_data, send_data_size);
+        }
+
+        // Extra Data Output Enable
+//        if (
+//                send_data[1] != 0x0E &&
+//                send_data[4] == 0x09 &&
+//	            send_data[5] == 0x03
+//        		)
+//        {// rmeove
+//          send_data[send_data_size - 2] = 0;
+//          send_data[send_data_size - 1] = 0;
+//        }
+
+        sendUdpData(msg.can_id, send_data, send_data_size);
+        for (i = 0; i < send_data_size; i++)
+        {
+          can_command_buffer[can_command_buffer_wp] = send_data[i];
+          can_command_buffer_wp++;
+          can_command_buffer_wp %= BUFFER_SIZE;
+        }
       }
+    }
 
-      // 脱力指示
-      //            	if(send_data[1] == 0x0F){
-      //            		send_data[1]  = 0;
-      //            	}
-      if (send_data[1] == 0x1B)
+    // others
+    if (buffer_rp2 != buffer_wp2)
+    {
+      msg = rx_msg_buffer2[buffer_rp2];
+      ret = parseCanData(msg.can_id, msg.data, msg.dlc, send_data, &send_data_size);
+      buffer_rp2++;
+      buffer_rp2 %= BUFFER_SIZE;
+      if (ret)
       {
-        // Get time stamp
-        time_stamp[0] = send_data[6];
-        time_stamp[1] = send_data[7];
-
-        // Linear X and Y
-        uint16_t linear_x = 256 * command_twist.linear.x + 1024;
-        uint16_t linear_y = 256 * command_twist.linear.y + 1024;
-        int16_t angular_z = 256 * command_twist.angular.z + 1024;
-
-        send_data[13] &= 0xC0;
-        send_data[13] |= (linear_x >> 5) & 0x3F;
-        send_data[12] = 0x00;
-        send_data[12] |= linear_x << 3;
-        send_data[12] |= (linear_y >> 8) & 0x07;
-        send_data[11] = 0x00;
-        send_data[11] |= linear_y & 0xFF;
-
-        send_data[17] = (angular_z >> 4) & 0xFF; //0x40;
-        send_data[16] = (angular_z << 4) | 0x08; //0x08;
-
-        send_data[18] = 0x00;
-
-        send_data[19] = 0x02 | ((angular_z << 2) & 0xFF);
-        send_data[20] = (angular_z >> 6) & 0xFF; // 0x10;
-
-        send_data[21] = 0x04;
-        send_data[22] = 0x04; // Enable Flag 4:x-y 8:yaw
-        send_data[23] = 0x00;
-        send_data[24] = 0x04;
-
-        send_data[send_data_size - 2] = 0;
-        send_data[send_data_size - 1] = 0;
-        appendCRC16CheckSum(send_data, send_data_size);
-        test_counter++;
+        sendUdpData(msg.can_id, send_data, send_data_size);
       }
-      if (send_data[1] == 0x14 && send_data[5] == 0x04)
+    }
+
+    // Transmit CAN Command
+    if (can_command_buffer_rp != can_command_buffer_wp)
+    {
+      int can_command_buffer_size = (can_command_buffer_wp - can_command_buffer_rp + BUFFER_SIZE) % BUFFER_SIZE;
+      if (can_command_buffer_size >= 8)
       {
-        // Linear X and Y
-        int16_t angular_y = -1024 * command_twist.angular.y;
-        int16_t angular_z = -1024 * command_twist.angular.z;
-
-        send_data[14] = (angular_y >> 8) & 0xFF;
-        send_data[13] = angular_y & 0xFF;
-        send_data[16] = (angular_z >> 8) & 0xFF;
-        send_data[15] = angular_z & 0xFF;
-
-        send_data[send_data_size - 2] = 0;
-        send_data[send_data_size - 1] = 0;
-        appendCRC16CheckSum(send_data, send_data_size);
+        TxHeader2.DLC = 8;
       }
-
-      // Smartphone touch event override
-      if (send_data[0] == 0x55 &&
-          send_data[1] == 0x0F &&
-          send_data[2] == 0x04 &&
-          send_data[3] == 0xA2 &&
-          send_data[4] == 0x09 &&
-          send_data[11] == 0x02)
+      else
       {
-        send_data[11] = 0;
-        // Recalcuration CRC16
-        send_data[send_data_size - 2] = 0;
-        send_data[send_data_size - 1] = 0;
-        appendCRC16CheckSum(send_data, send_data_size);
+        TxHeader2.DLC = can_command_buffer_size;
       }
-      UdpSendData(msg.can_id, send_data, send_data_size);
-      for (i = 0; i < send_data_size; i++)
+      TxHeader2.StdId = 0x201;//RxHeader1.StdId;
+      TxHeader2.ExtId = 0x00;//RxHeader1.ExtId;
+      TxHeader2.RTR = CAN_RTR_DATA;
+      TxHeader2.IDE = CAN_ID_STD;
+      TxHeader2.TransmitGlobalTime = DISABLE;
+      for (i = 0; i < TxHeader2.DLC; i++)
       {
-        can_command_buffer[can_command_buffer_wp] = send_data[i];
-        can_command_buffer_wp++;
-        can_command_buffer_wp %= BUFFER_SIZE;
+        TxData2[i] = can_command_buffer[(can_command_buffer_rp + i) % BUFFER_SIZE];
+      }
+      /* Start Transmission process */
+      int ret = HAL_CAN_AddTxMessage(&hcan2, &TxHeader2, TxData2, &TxMailbox2);
+      if (ret == HAL_OK)
+      {
+        can_command_buffer_rp += TxHeader2.DLC;
+        can_command_buffer_rp %= BUFFER_SIZE;
       }
     }
-  }
 
-  // others
-  if (buffer_rp2 != buffer_wp2)
-  {
-    msg = rx_msg_buffer2[buffer_rp2];
-    ret = parseCanData(msg.can_id, msg.data, msg.dlc, send_data, &send_data_size);
-    buffer_rp2++;
-    buffer_rp2 %= BUFFER_SIZE;
-    if (ret)
-    {
-      UdpSendData(msg.can_id, send_data, send_data_size);
-    }
-  }
-
-  // Transmit CAN Command
-  if (can_command_buffer_rp != can_command_buffer_wp)
-  {
-    int can_command_buffer_size = (can_command_buffer_wp - can_command_buffer_rp + BUFFER_SIZE) % BUFFER_SIZE;
-    if (can_command_buffer_size >= 8)
-    {
-      TxHeader2.DLC = 8;
-    }
-    else
-    {
-      TxHeader2.DLC = can_command_buffer_size;
-    }
-    TxHeader2.StdId = RxHeader1.StdId;
-    TxHeader2.ExtId = RxHeader1.ExtId;
-    TxHeader2.RTR = CAN_RTR_DATA;
-    TxHeader2.IDE = CAN_ID_STD;
-    TxHeader2.TransmitGlobalTime = DISABLE;
-    for (i = 0; i < TxHeader2.DLC; i++)
-    {
-      TxData2[i] = can_command_buffer[(can_command_buffer_rp + i) % BUFFER_SIZE];
-    }
-    /* Start Transmission process */
-    int ret = HAL_CAN_AddTxMessage(&hcan2, &TxHeader2, TxData2, &TxMailbox2);
-    if (ret == HAL_OK)
-    {
-      can_command_buffer_rp += TxHeader2.DLC;
-      can_command_buffer_rp %= BUFFER_SIZE;
-    }
-  }
-
-  MX_LWIP_Process();
+    MX_LWIP_Process();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-}
+  }
   /* USER CODE END 3 */
 }
 
@@ -1036,19 +1215,31 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
-  if (htim == &htim2){
-	// 10msec Timer
-	timer1s_counter++;
-	if(timer1s_counter == 100){
-	  timer1s_counter = 0;
-	  timer1s_flag = 100;
-	}
-	timer100ms_counter++;
-	if(timer100ms_counter == 10){
-	  timer100ms_counter = 0;
-	  timer100ms_flag = 1;
-	}
-	timer10ms_flag = 1;
+  if (htim == &htim2)
+  {
+    // 10msec Timer
+    timer10msec_counter++;
+
+    // 10sec conter
+    if (timer10msec_counter % 1000 == 0)
+    {
+      timer10sec_counter++;
+      timer10sec_flag = 1;
+    }
+
+    // 1sec conter
+    if (timer10msec_counter % 100 == 0)
+    {
+      timer1sec_counter++;
+      timer1sec_flag = 100;
+    }
+
+    // 100msec counter
+    if (timer10msec_counter % 10 == 0)
+    {
+      timer100msec_counter++;
+      timer100msec_flag = 1;
+    }
   }
   /* USER CODE END Callback 1 */
 }

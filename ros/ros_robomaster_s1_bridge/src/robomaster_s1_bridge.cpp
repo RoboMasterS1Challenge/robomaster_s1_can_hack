@@ -1,10 +1,5 @@
 #include "robomaster_s1_bridge.h"
 
-float hex2float(uint32_t hex_num)
-{
-  return *(float *)&hex_num;
-}
-
 // RoboMasterS1Bridge()
 // Constructor
 RoboMasterS1Bridge::RoboMasterS1Bridge()
@@ -133,7 +128,7 @@ void RoboMasterS1Bridge::udpReceiveThread(uint8_t can_id_num)
     switch (can_id_num)
     {
     case 0: //0x201
-      if (buf[4] == 0x09 && buf[5] == 0x17)
+      if (buf[4] == 0x09 && (buf[5] == 0x17 || buf[5] == 0x18))
       {
         for (int i = 0; i < recv_msglen; i++)
         {
