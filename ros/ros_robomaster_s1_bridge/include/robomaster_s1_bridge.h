@@ -16,6 +16,8 @@
 #include <thread>
 #include <mutex>
 #include <geometry_msgs/TwistStamped.h>
+#include <std_msgs/ColorRGBA.h>
+#include <std_msgs/Bool.h>
 #include <sensor_msgs/Joy.h>
 #include <std_msgs/UInt8MultiArray.h>
 #include <ros_robomaster_s1_bridge/RoboMasterS1Info.h>
@@ -139,6 +141,8 @@ private:
   // Subscriber
   ros::Subscriber robomaster_s1_bridge_rx_sub_;
   ros::Subscriber robomaster_s1_bridge_rx_joy_sub_;
+  ros::Subscriber robomaster_s1_bridge_rx_led_sub_;
+  ros::Subscriber robomaster_s1_bridge_rx_lose_sub_;
 
   std::vector<std::thread> receive_thread_list_;
 
@@ -167,6 +171,8 @@ private:
   // callback functions
   void twistCommandCallback(const geometry_msgs::Twist::ConstPtr &twist_command);
   void joyCommandCallback(const sensor_msgs::Joy::ConstPtr &joy_command);
+  void loseCommandCallback(const std_msgs::Bool::ConstPtr &lose_command);
+  void ledCommandCallback(const std_msgs::ColorRGBA::ConstPtr &led_command);
 
   // thread
   void udpReceiveThread(uint8_t can_id_num);

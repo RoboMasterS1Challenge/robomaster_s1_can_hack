@@ -4,15 +4,16 @@
 #ifndef __ROBOMASTER_S1_H__
 #define __ROBOMASTER_S1_H__
 
-
 #define CAN_ID_NUM 10
 
-#define BUFFER_SIZE 512
+#define BUFFER_SIZE 2048
 
 #define PI 3.14159265
 
 #define TWIST_COMMAND_SIZE 19
 #define BLASTER_COMMAND_SIZE 8
+#define LOSE_COMMAND_SIZE 8
+#define LED_COMMAND_SIZE 10
 
 typedef enum can_ids
 {
@@ -28,7 +29,6 @@ typedef enum can_ids
     ID_0x216 = 9
 } can_ids;
 
-
 typedef struct CANRxMsg
 {
     can_ids can_id;
@@ -36,20 +36,31 @@ typedef struct CANRxMsg
     uint8_t data[8];
 } CANRxMsg;
 
-typedef struct linear {
-	   double x;
-	   double y;
-	   double z;
+typedef struct linear
+{
+    double x;
+    double y;
+    double z;
 } linear;
-typedef struct angular {
-	   double x;
-	   double y;
-	   double z;
+typedef struct angular
+{
+    double x;
+    double y;
+    double z;
 } angular;
-typedef struct twist {
-	uint8_t enable;
-	linear linear;
-	angular angular;
+typedef struct twist
+{
+    uint8_t enable;
+    linear linear;
+    angular angular;
 } twist;
+
+typedef struct led
+{
+    uint8_t enable;
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
+} led;
 
 #endif

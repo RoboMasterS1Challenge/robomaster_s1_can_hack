@@ -1,4 +1,28 @@
 #include "robomaster_s1_bridge.h"
+#include "std_msgs/String.h"
+
+#include <string>
+#include <unistd.h>
+#include <fcntl.h>
+#include <termios.h>
+
+int fd;
+
+int open_serial(const char *device_name)
+{
+  int fd = open(device_name, O_RDWR | O_NOCTTY | O_NONBLOCK);
+
+  struct termios options;
+  tcgetattr(fd, &options);
+  options.c_cflag = B1000000 /*B115200*/ | CS8 | CLOCAL | CREAD;
+  options.c_iflag = IGNPAR | ICRNL;
+  options.c_oflag = 0;
+  options.c_lflag = 0;
+  cfmakeraw(&options);
+  tcflush(fd, TCIFLUSH);
+  tcsetattr(fd, TCSANOW, &options);
+  return fd;
+}
 
 // RoboMasterS1Bridge()
 // Constructor
@@ -8,8 +32,13 @@ RoboMasterS1Bridge::RoboMasterS1Bridge()
   // ROS
   robomaster_s1_bridge_rx_sub_ = nh_.subscribe("/robomaster_s1/cmd_vel", 10, &RoboMasterS1Bridge::twistCommandCallback, this);
   robomaster_s1_bridge_rx_joy_sub_ = nh_.subscribe("/joy", 10, &RoboMasterS1Bridge::joyCommandCallback, this);
+  robomaster_s1_bridge_rx_led_sub_ = nh_.subscribe("/robomaster_s1/led", 10, &RoboMasterS1Bridge::ledCommandCallback, this);
+  robomaster_s1_bridge_rx_lose_sub_ = nh_.subscribe("/robomaster_s1/lose", 10, &RoboMasterS1Bridge::loseCommandCallback, this);
   robomaster_s1_bridge_tx_debug_pub_ = nh_.advertise<std_msgs::UInt8MultiArray>("/robomaster_s1/debug_info", 10);
   robomaster_s1_bridge_tx_info_pub_ = nh_.advertise<ros_robomaster_s1_bridge::RoboMasterS1Info>("/robomaster_s1/robomaster_s1_info", 10);
+
+  char device_name[] = "/dev/ttyACM0";
+  fd = open_serial(device_name);
 
   // Parameters
   pnh_.param("debug_print", debug_print_, (int)0);
@@ -51,6 +80,7 @@ RoboMasterS1Bridge::~RoboMasterS1Bridge()
     delete udp_receive_[i];
   }
   delete udp_send_;
+  close(fd);
 } //~RoboMasterS1Bridge()
 
 void RoboMasterS1Bridge::twistCommandCallback(const geometry_msgs::Twist::ConstPtr &twist_command)
@@ -86,6 +116,12 @@ void RoboMasterS1Bridge::twistCommandCallback(const geometry_msgs::Twist::ConstP
   {
     ROS_WARN_DELAYED_THROTTLE(10, "Send packet");
   }
+
+  int ret = write(fd, send_data, 19);
+  if (ret < 0)
+  {
+    ROS_ERROR("Serial Fail: cound not write");
+  }
 }
 
 void RoboMasterS1Bridge::joyCommandCallback(const sensor_msgs::Joy::ConstPtr &joy_command)
@@ -112,6 +148,71 @@ void RoboMasterS1Bridge::joyCommandCallback(const sensor_msgs::Joy::ConstPtr &jo
     {
       ROS_WARN_DELAYED_THROTTLE(10, "Send packet");
     }
+    int ret = write(fd, send_data, 8);
+    if (ret < 0)
+    {
+      ROS_ERROR("Serial Fail: cound not write");
+    }
+  }
+}
+
+void RoboMasterS1Bridge::ledCommandCallback(const std_msgs::ColorRGBA::ConstPtr &led_command)
+{
+  // UDP Send
+  uint8_t send_data[10];
+  send_data[0] = 0x55;
+  send_data[1] = 0x0A;
+  send_data[2] = 0x04;
+  send_data[3] = 0x00;
+  appendCRC8CheckSum(send_data, 4);
+  send_data[4] = 0x04;                    // Command Number
+  send_data[5] = (uint8_t)led_command->r; //LED
+  send_data[6] = (uint8_t)led_command->g; //LED
+  send_data[7] = (uint8_t)led_command->b; //LED
+  send_data[8] = 0x00;
+  send_data[9] = 0x00;
+  appendCRC16CheckSum(send_data, 10);
+  if (udp_send_->udp_send(send_data, 10) == -1)
+  {
+    ROS_WARN("Cannot send packet");
+  }
+  else
+  {
+    ROS_WARN_DELAYED_THROTTLE(10, "Send packet");
+  }
+  int ret = write(fd, send_data, 10);
+  ROS_INFO("0x%2X,0x%2X,0x%2X,0x%2X", send_data[0], send_data[1], send_data[2], send_data[3]);
+  if (ret < 0)
+  {
+    ROS_ERROR("Serial Fail: cound not write");
+  }
+}
+void RoboMasterS1Bridge::loseCommandCallback(const std_msgs::Bool::ConstPtr &lose_command)
+{
+  // UDP Send
+  uint8_t send_data[8];
+  send_data[0] = 0x55;
+  send_data[1] = 0x08;
+  send_data[2] = 0x04;
+  send_data[3] = 0x00;
+  appendCRC8CheckSum(send_data, 4);
+  send_data[4] = 0x03;                        // Command Number
+  send_data[5] = (uint8_t)lose_command->data; //LED
+  send_data[6] = 0x00;
+  send_data[7] = 0x00;
+  appendCRC16CheckSum(send_data, 8);
+  if (udp_send_->udp_send(send_data, 8) == -1)
+  {
+    ROS_WARN("Cannot send packet");
+  }
+  else
+  {
+    ROS_WARN_DELAYED_THROTTLE(10, "Send packet");
+  }
+  int ret = write(fd, send_data, 8);
+  if (ret < 0)
+  {
+    ROS_ERROR("Serial Fail: cound not write");
   }
 }
 

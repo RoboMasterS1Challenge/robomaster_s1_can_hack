@@ -10,7 +10,7 @@
   * All rights reserved.</center></h2>
   *
   * This software component is licensed by ST under BSD 3-Clause license,
-  * the "License"; You may not use this file except in compliance with the
+  * the "License"38400; You may not use this file except in compliance with the
   * License. You may obtain a copy of the License at:
   *                        opensource.org/licenses/BSD-3-Clause
   *
@@ -21,11 +21,13 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "lwip.h"
+#include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "string.h"
 #include "robomaster_s1.h"
+#include "usbd_cdc_if.h"
 
 /* USER CODE END Includes */
 
@@ -35,40 +37,35 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define COMMAND_LIST_SIZE 38
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+typedef union float_uint8 {
+  float float_data;
+  uint8_t uint8_data[4];
+} float_uint8;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 CAN_HandleTypeDef hcan1;
-CAN_HandleTypeDef hcan2;
 
 TIM_HandleTypeDef htim2;
 
 /* USER CODE BEGIN PV */
-CAN_TxHeaderTypeDef TxHeader1;
-CAN_RxHeaderTypeDef RxHeader1;
-uint8_t TxData1[8];
-uint8_t RxData1[8];
-uint32_t TxMailbox1;
-uint32_t RxMailbox1;
-CAN_TxHeaderTypeDef TxHeader2;
-CAN_RxHeaderTypeDef RxHeader2;
-uint8_t TxData2[8];
-uint8_t RxData2[8];
-uint32_t TxMailbox2;
-uint32_t RxMailbox2;
+const uint8_t can_command_list[COMMAND_LIST_SIZE][0x4B] = {
+#include "command_list.csv"
+};
+volatile uint16_t command_counter[COMMAND_LIST_SIZE];
+volatile uint16_t counter_led;
+volatile uint16_t counter_blaster;
+volatile uint16_t counter_lose;
+volatile uint16_t counter_mode;
 
-volatile CANRxMsg rx_msg_buffer1[BUFFER_SIZE];
-volatile int buffer_rp1;
-volatile int buffer_wp1;
-volatile CANRxMsg rx_msg_buffer2[BUFFER_SIZE];
-volatile int buffer_rp2;
-volatile int buffer_wp2;
+volatile CANRxMsg rx_msg_buffer[BUFFER_SIZE];
+volatile int buffer_rp;
+volatile int buffer_wp;
 
 volatile uint8_t can_command_buffer[BUFFER_SIZE];
 volatile int can_command_buffer_rp;
@@ -76,19 +73,24 @@ volatile int can_command_buffer_wp;
 
 extern twist command_twist;
 extern int command_blaster;
+extern int command_lose;
+extern led command_led;
 
-uint8_t time_stamp[2];
-uint16_t blaster_counter[2];
-uint8_t timer10sec_flag;
-uint32_t timer10sec_counter;
-uint8_t timer1sec_flag;
-uint32_t timer1sec_counter;
-uint8_t timer10msec_flag;
-uint32_t timer10msec_counter;
-uint8_t timer100msec_flag;
-uint32_t timer100msec_counter;
+extern uint8_t usb_rBuf[];
+extern int usb_rBuf_wp;
+extern int usb_rBuf_rp;
 
-uint8_t data_update_check;
+// Timer
+volatile uint8_t timer10sec_flag;
+volatile uint32_t timer10sec_counter;
+volatile uint8_t timer1sec_flag;
+volatile uint32_t timer1sec_counter;
+volatile uint8_t timer10msec_flag;
+volatile uint32_t timer10msec_counter;
+volatile uint8_t timer100msec_flag;
+volatile uint32_t timer100msec_counter;
+
+volatile int initial_task_flag;
 
 /* USER CODE END PV */
 
@@ -96,18 +98,55 @@ uint8_t data_update_check;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_CAN1_Init(void);
-static void MX_CAN2_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 static void CAN_FilterConfig(void);
 extern void sendUdpData(uint8_t id, uint8_t *send_data, uint8_t send_data_size);
 extern void startUdp(uint8_t *ip_addr);
 extern int parseCanData(uint8_t id, uint8_t *in_data, uint8_t in_data_size, uint8_t out_data[], uint8_t *out_data_size);
+extern int parseUsbData(uint8_t *in_data, uint8_t in_data_size, uint8_t out_data[], uint8_t *out_data_size);
+
+extern void appendCRC8CheckSum(uint8_t *pchMessage, uint32_t dwLength);
+extern void appendCRC16CheckSum(uint8_t *pchMessage, uint32_t dwLength);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+void set_can_command(uint8_t command_no)
+{
+  uint8_t command_length = can_command_list[command_no][3];
+  uint8_t header_command[0xFF];
+  uint8_t idx = 0;
+  for (int i = 2; i < command_length; i++)
+  {
+    header_command[idx] = can_command_list[command_no][i];
+
+    if (i == 5 && can_command_list[command_no][5] == 0xFF)
+    {
+      appendCRC8CheckSum(header_command, 4);
+    }
+    if (i == 8 && can_command_list[command_no][8] == 0xFF)
+    {
+      header_command[idx] = command_counter[command_no] & 0xFF;
+    }
+    if (i == 9 && can_command_list[command_no][9] == 0xFF)
+    {
+      header_command[idx] = (command_counter[command_no] >> 8) & 0xFF;
+    }
+    command_counter[command_no]++;
+
+    idx++;
+  }
+  appendCRC16CheckSum(header_command, command_length);
+  for (int i = 0; i < command_length; i++)
+  {
+    can_command_buffer[can_command_buffer_wp] = header_command[i];
+    can_command_buffer_wp++;
+    can_command_buffer_wp %= BUFFER_SIZE;
+  }
+}
 /* USER CODE END 0 */
 
 /**
@@ -119,7 +158,6 @@ int main(void)
   /* USER CODE BEGIN 1 */
 
   /* USER CODE END 1 */
-  
 
   /* MCU Configuration--------------------------------------------------------*/
 
@@ -127,7 +165,6 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-  HAL_Delay(1000); // 1sec wait for boot
 
   /* USER CODE END Init */
 
@@ -142,46 +179,26 @@ int main(void)
   MX_GPIO_Init();
   MX_LWIP_Init();
   MX_CAN1_Init();
-  MX_CAN2_Init();
   MX_TIM2_Init();
+  MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
 
   /* Configure the CAN peripheral */
   CAN_FilterConfig();
 
-  /*## Start the CAN peripheral ###########################################*/
-//  if (HAL_CAN_Start(&hcan1) != HAL_OK)
-//  {
-//    /* Start Error */
-//    Error_Handler();
-//  }
-
-  if (HAL_CAN_Start(&hcan2) != HAL_OK)
+  if (HAL_CAN_Start(&hcan1) != HAL_OK)
   {
     /* Start Error */
     Error_Handler();
   }
 
-  /*## Activate CAN RX notification #######################################*/
-//  if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK)
-//  {
-//    /* Notification Error */
-//    Error_Handler();
-//  }
-
-  if (HAL_CAN_ActivateNotification(&hcan2, CAN_IT_RX_FIFO1_MSG_PENDING) != HAL_OK)
+  if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK)
   {
     /* Notification Error */
     Error_Handler();
   }
 
-//  if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_FULL) != HAL_OK)
-//  {
-//    /* Notification Error */
-//    Error_Handler();
-//  }
-
-  if (HAL_CAN_ActivateNotification(&hcan2, CAN_IT_RX_FIFO1_FULL) != HAL_OK)
+  if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_FULL) != HAL_OK)
   {
     /* Notification Error */
     Error_Handler();
@@ -191,28 +208,30 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  buffer_rp1 = 0;
-  buffer_wp1 = 0;
-  buffer_rp2 = 0;
-  buffer_wp2 = 0;
+
+  uint8_t received_data[255];
+  uint8_t received_data_size = 0;
+  int i = 0;
+  int ret = 0;
+  uint8_t send_ip_addr[] = {192, 168, 0, 255};
+
+  double base_odom_yaw;
+  double gimbal_base_yaw_angle;
+  double gimbal_map_yaw_angle;
+  double gimbal_base_pitch_angle;
+  double gimbal_map_pitch_angle;
+
+  buffer_rp = 0;
+  buffer_wp = 0;
   can_command_buffer_rp = 0;
   can_command_buffer_wp = 0;
 
-  uint8_t send_ip_addr[] = {192, 168, 0, 255};
-  startUdp(send_ip_addr);
+  usb_rBuf_wp = 0;
+  usb_rBuf_rp = 0;
 
-  CANRxMsg msg;
-  uint8_t send_data[255];
-  uint8_t send_data_size = 0;
-  int i = 0;
-  int ret = 0;
-  uint64_t test_counter = 0;
-  int blaster_cycle = 0;
-  int blaster_timeout = 0;
-  blaster_counter[0] = 0;
-  blaster_counter[1] = 0;
+  counter_blaster = 0;
+  counter_led = 0;
 
-  HAL_TIM_Base_Start_IT(&htim2);
   timer10sec_flag = 0;
   timer10sec_counter = 0;
   timer1sec_flag = 0;
@@ -221,478 +240,955 @@ int main(void)
   timer100msec_counter = 0;
   timer10msec_flag = 0;
   timer10msec_counter = 0;
-  data_update_check = 0;
-  int data_update_inhibit_counter = 0;
 
-  int init_lab_mode = 0;
+  HAL_TIM_Base_Start_IT(&htim2);
+  startUdp(send_ip_addr);
+
   while (1)
   {
-    // 10msec TASK
-    if (timer10msec_flag)
+    // Initial Command 10sec after boot
+    if (initial_task_flag == 0)
     {
-      timer10msec_flag = 0;
-
-      // Data Update Check Function
-      data_update_check++;
-      if (data_update_check >= 10)
+      if (timer10sec_flag == 1)
       {
-        // Reset all command
-        command_twist.linear.x = 0;
-        command_twist.linear.y = 0;
-        command_twist.linear.z = 0;
-        command_twist.angular.x = 0;
-        command_twist.angular.y = 0;
-        command_twist.angular.z = 0;
-        data_update_inhibit_counter = 300;
-      }
-      // Data Update Inhibit Counter
-      if(data_update_inhibit_counter > 0){
-          command_twist.linear.x = 0;
-          command_twist.linear.y = 0;
-          command_twist.linear.z = 0;
-          command_twist.angular.x = 0;
-          command_twist.angular.y = 0;
-          command_twist.angular.z = 0;
-      }
+        initial_task_flag = 1;
 
-      if(data_update_inhibit_counter > 0){
-          data_update_inhibit_counter--;
-      }
-
-
-    }
-
-    // 100msec TASK
-    if (timer100msec_flag)
-    {
-      timer100msec_flag = 0;
-    }
-    
-    // 1sec TASK
-    if (timer1sec_flag)
-    {
-      //timer1sec_flag = 0;
-    }
-    
-    // 10sec TASK
-    if (timer10sec_flag)
-    {
-      timer10sec_flag = 0;
-//boot command
-
-
-      uint8_t boot_data1[0x1B] = {0x55,0x1B,0x04,0x75,0x09,0xC3,0x00,0x00,0x00,0x3F,0x60,0x00,0x04,0x20,0x00,0x01,0x00,0x40,0x00,0x02,0x10,0x00,0x03,0x00,0x00,0x6E,0x3C};
-      uint8_t boot_data2[0x14] = {0x55,0x14,0x04,0x6D,0x09,0x04,0x00,0x00,0x00,0x04,0x69,0x08,0x05,0x00,0x00,0x00,0x00,0x01,0x9B,0x56};
-      uint8_t boot_data3[0x0F] = {0x55,0x0F,0x04,0xA2,0x09,0x04,0x02,0x00,0x40,0x04,0x4C,0x02,0x00,0xC0,0x34};
-      uint8_t boot_data4[0x0E] = {0x55,0x0E,0x04,0x66,0x09,0x03,0x00,0x00,0x00,0x3F,0x3F,0x02,0xF8,0x8F};
-      uint8_t boot_data5[0x15] = {0x55,0x15,0x04,0xA9,0xF1,0xC3,0x00,0x00,0x00,0x03,0xD7,0x01,0x07,0x00,0x02,0x00,0x00,0x00,0x00,0x92,0xA0};
-      uint8_t boot_data6[0x12] = {0x55,0x12,0x04,0xC7,0x09,0x03,0x01,0x00,0x40,0x48,0x01,0x09,0x00,0x00,0x00,0x03,0xDF,0x6D};
-      uint8_t boot_data7[0x1C] = {0x55,0x1C,0x04,0x1B,0x09,0x03,0x02,0x00,0x40,0x48,0x03,0x09,0x00,0x03,0x00,0x01,0xFB,0xDC,0xF5,0xD7,0x03,0x00,0x02,0x00,0x01,0x00,0x67,0x89};
-      uint8_t boot_data8[0x12] = {0x55,0x12,0x04,0xC7,0x09,0x03,0x03,0x00,0x40,0x48,0x01,0x09,0x00,0x00,0x00,0x03,0x91,0x35};
-      uint8_t boot_data9[0x24] = {0x55,0x24,0x04,0x40,0x09,0x03,0x04,0x00,0x40,0x48,0x03,0x09,0x01,0x03,0x00,0x02,0xA7,0x02,0x29,0x88,0x03,0x00,0x02,0x00,0x66,0x3E,0x3E,0x4C,0x03,0x00,0x02,0x00,0x32,0x00,0x85,0x4C};
-
-      for (i = 0; i < 0x1B; i++)
-      {
-        can_command_buffer[can_command_buffer_wp] = boot_data1[i];
-        can_command_buffer_wp++;
-        can_command_buffer_wp %= BUFFER_SIZE;
-      }
-      for (i = 0; i < 0x14; i++)
-      {
-        can_command_buffer[can_command_buffer_wp] = boot_data2[i];
-        can_command_buffer_wp++;
-        can_command_buffer_wp %= BUFFER_SIZE;
-      }
-      for (i = 0; i < 0x0F; i++)
-      {
-        can_command_buffer[can_command_buffer_wp] = boot_data3[i];
-        can_command_buffer_wp++;
-        can_command_buffer_wp %= BUFFER_SIZE;
-      }
-      for (i = 0; i < 0x0E; i++)
-      {
-        can_command_buffer[can_command_buffer_wp] = boot_data4[i];
-        can_command_buffer_wp++;
-        can_command_buffer_wp %= BUFFER_SIZE;
-      }
-      for (i = 0; i < 0x15; i++)
-      {
-        can_command_buffer[can_command_buffer_wp] = boot_data5[i];
-        can_command_buffer_wp++;
-        can_command_buffer_wp %= BUFFER_SIZE;
-      }
-      for (i = 0; i < 0x12; i++)
-      {
-        can_command_buffer[can_command_buffer_wp] = boot_data6[i];
-        can_command_buffer_wp++;
-        can_command_buffer_wp %= BUFFER_SIZE;
-      }
-      for (i = 0; i < 0x1C; i++)
-      {
-        can_command_buffer[can_command_buffer_wp] = boot_data7[i];
-        can_command_buffer_wp++;
-        can_command_buffer_wp %= BUFFER_SIZE;
-      }
-      for (i = 0; i < 0x12; i++)
-      {
-        can_command_buffer[can_command_buffer_wp] = boot_data8[i];
-        can_command_buffer_wp++;
-        can_command_buffer_wp %= BUFFER_SIZE;
-      }
-      for (i = 0; i < 0x24; i++)
-      {
-        can_command_buffer[can_command_buffer_wp] = boot_data9[i];
-        can_command_buffer_wp++;
-        can_command_buffer_wp %= BUFFER_SIZE;
-      }
-
-      // LED on
-      uint8_t boot_data10[0x1A] = {0x55,0x1A,0x04,0xB1,0x09,0x18,0x16,0x00,0x00,0x3F,0x32,0x02,0xFF,0x00,0xFF,0xFF,0xFF,0x00,0xF4,0x01,0xF4,0x01,0x3F,0x00,0xC4,0xE3};
-
-      for (i = 0; i < 0x1A; i++)
-      {
-        can_command_buffer[can_command_buffer_wp] = boot_data10[i];
-        can_command_buffer_wp++;
-        can_command_buffer_wp %= BUFFER_SIZE;
-      }
-
-      // Enable Lab
-//      uint8_t lab_init_data1[0x10] = {0x55,0x10,0x04,0x56,0x09,0x03,0x05,0x00,0x40,0x48,0x04,0x00,0x09,0x00,0x76,0x69};
-//      uint8_t lab_init_data2[0x12] = {0x55,0x12,0x04,0xC7,0x09,0x03,0x06,0x00,0x40,0x48,0x01,0x09,0x00,0x00,0x00,0x03,0x2A,0xA9};
-//      uint8_t lab_init_data3[0x24] = {0x55,0x24,0x04,0x40,0x09,0x03,0x07,0x00,0x40,0x48,0x03,0x09,0x00,0x03,0x00,0x02,0xFB,0xDC,0xF5,0xD7,0x03,0x00,0x02,0x00,0x4B,0xEF,0x47,0xAB,0x03,0x00,0x02,0x00,0x01,0x00,0xAC,0x64};
-//      uint8_t lab_init_data4[0x12] = {0x55,0x12,0x04,0xC7,0x09,0x03,0x08,0x00,0x40,0x48,0x01,0x09,0x00,0x00,0x00,0x03,0xD1,0x28};
-      uint8_t lab_init_data5[0x3C] = {0x55,0x3C,0x04,0xDA,0x09,0x03,0x09,0x00,0x40,0x48,0x03,0x09,0x02,0x03,0x00,0x05,0x09,0xA3,0x26,0xE2,0x03,0x00,0x02,0x00,0xB3,0xF7,0xE6,0x47,0x03,0x00,0x02,0x00,0xF4,0x1D,0x1C,0xDC,0x03,0x00,0x02,0x00,0x03,0xC5,0x58,0x08,0x03,0x00,0x02,0x00,0x42,0xEE,0x13,0x1D,0x03,0x00,0x02,0x00,0x05,0x00,0xB5,0xC7};
-
-//      for (i = 0; i < 0x10; i++)
-//      {
-//        can_command_buffer[can_command_buffer_wp] = lab_init_data1[i];
-//        can_command_buffer_wp++;
-//        can_command_buffer_wp %= BUFFER_SIZE;
-//      }
-//      for (i = 0; i < 0x12; i++)
-//      {
-//        can_command_buffer[can_command_buffer_wp] = lab_init_data2[i];
-//        can_command_buffer_wp++;
-//        can_command_buffer_wp %= BUFFER_SIZE;
-//      }
-//      for (i = 0; i < 0x24; i++)
-//      {
-//        can_command_buffer[can_command_buffer_wp] = lab_init_data3[i];
-//        can_command_buffer_wp++;
-//        can_command_buffer_wp %= BUFFER_SIZE;
-//      }
-//      for (i = 0; i < 0x12; i++)
-//      {
-//        can_command_buffer[can_command_buffer_wp] = lab_init_data4[i];
-//        can_command_buffer_wp++;
-//        can_command_buffer_wp %= BUFFER_SIZE;
-//      }
-      for (i = 0; i < 0x3C; i++)
-      {
-        can_command_buffer[can_command_buffer_wp] = lab_init_data5[i];
-        can_command_buffer_wp++;
-        can_command_buffer_wp %= BUFFER_SIZE;
-      }
-
-    }
-
-    // 0x201 Intelligent Controller Command
-    if (buffer_rp1 != buffer_wp1)
-    {
-      msg = rx_msg_buffer1[buffer_rp1];
-      ret = parseCanData(msg.can_id, msg.data, msg.dlc, send_data, &send_data_size);
-      buffer_rp1++;
-      buffer_rp1 %= BUFFER_SIZE;
-      if (ret)
-      {
-        if (command_blaster || timer1sec_flag)
+        //boot command
+        for (int command_no = 26; command_no < 35; command_no++)
         {
-          timer1sec_flag--;
-          // kuratta oto 0x55,0x0F,0x04,0xA2,0x09,0x17,0x7C,0x09,0x00,0x3F,0x58,0xB0,0x01,0x10,0xE4
+          uint8_t header_command[0xFF];
+          uint8_t idx = 0;
+          uint8_t command_length = can_command_list[command_no][3];
+          for (i = 2; i < command_length; i++)
+          {
+            header_command[idx] = can_command_list[command_no][i];
 
-          if (blaster_cycle == 0)
-          {
-            uint8_t blaster_data[26];
-            blaster_data[0] = 0x55;
-            blaster_data[1] = 0x1A;
-            blaster_data[2] = 0x04;
-            blaster_data[3] = 0x00;
-            appendCRC8CheckSum(blaster_data, 4);
-            blaster_data[4] = 0x09;
-            blaster_data[5] = 0x18;
-            blaster_data[6] = blaster_counter[0] & 0xFF;
-            blaster_data[7] = blaster_counter[0] >> 8;
-            blaster_data[8] = 0x00;
-            blaster_data[9] = 0x3F;
-            blaster_data[10] = 0x32;
-            blaster_data[11] = 0x01;
-            blaster_data[12] = 0xFF;
-            blaster_data[13] = 0x00;
-            blaster_data[14] = 0x00;
-            blaster_data[15] = 0x7F;
-            blaster_data[16] = 0x46;
-            blaster_data[17] = 0x00;
-            blaster_data[18] = 0xC8;
-            blaster_data[19] = 0x00;
-            blaster_data[20] = 0xC8;
-            blaster_data[21] = 0x00;
-            blaster_data[22] = 0x0F;
-            blaster_data[23] = 0x00;
-            blaster_data[24] = 0x00;
-            blaster_data[25] = 0x00;
-            appendCRC16CheckSum(blaster_data, 26);
-            blaster_counter[0]++;
-            for (i = 0; i < 26; i++)
+            if (i == 5 && can_command_list[command_no][5] == 0xFF)
             {
-              can_command_buffer[can_command_buffer_wp] = blaster_data[i];
-              can_command_buffer_wp++;
-              can_command_buffer_wp %= BUFFER_SIZE;
+              appendCRC8CheckSum(header_command, 4);
             }
-            sendUdpData(msg.can_id, blaster_data, 26);
-            blaster_cycle++;
+
+            idx++;
           }
-          else if (blaster_cycle == 1)
+          appendCRC16CheckSum(header_command, command_length);
+          for (int i = 0; i < command_length; i++)
           {
-            uint8_t blaster_data[14];
-            blaster_data[0] = 0x55;
-            blaster_data[1] = 0x0E;
-            blaster_data[2] = 0x04;
-            blaster_data[3] = 0x00;
-            appendCRC8CheckSum(blaster_data, 4);
-            blaster_data[4] = 0x09;
-            blaster_data[5] = 0x17;
-            blaster_data[6] = blaster_counter[1] & 0xFF;
-            blaster_data[7] = blaster_counter[1] >> 8;
-            blaster_data[8] = 0x00;
-            blaster_data[9] = 0x3F;
-            blaster_data[10] = 0x51;
-            blaster_data[11] = 0x11;
-            blaster_data[12] = 0x00;
-            blaster_data[13] = 0x00;
-            appendCRC16CheckSum(blaster_data, 14);
-            blaster_counter[1]++;
-            for (i = 0; i < 14; i++)
-            {
-              can_command_buffer[can_command_buffer_wp] = blaster_data[i];
-              can_command_buffer_wp++;
-              can_command_buffer_wp %= BUFFER_SIZE;
-            }
-            sendUdpData(msg.can_id, blaster_data, 14);
-            blaster_cycle++;
-          }
-          else if (blaster_cycle == 2)
-          {
-            uint8_t blaster_data[22];
-            blaster_data[0] = 0x55;
-            blaster_data[1] = 0x16;
-            blaster_data[2] = 0x04;
-            blaster_data[3] = 0x00;
-            appendCRC8CheckSum(blaster_data, 4);
-            blaster_data[4] = 0x09;
-            blaster_data[5] = 0x17;
-            blaster_data[6] = blaster_counter[1] & 0xFF;
-            blaster_data[7] = blaster_counter[1] >> 8;
-            blaster_data[8] = 0x00;
-            blaster_data[9] = 0x3F;
-            blaster_data[10] = 0x55;
-            blaster_data[11] = 0x73;
-            blaster_data[12] = 0x00;
-            blaster_data[13] = 0xFF;
-            blaster_data[14] = 0x00;
-            blaster_data[15] = 0x01;
-            blaster_data[16] = 0x28;
-            blaster_data[17] = 0x00;
-            blaster_data[18] = 0x00;
-            blaster_data[19] = 0x00;
-            blaster_data[20] = 0x00;
-            blaster_data[21] = 0x00;
-            appendCRC16CheckSum(blaster_data, 22);
-            blaster_counter[1]++;
-            for (i = 0; i < 22; i++)
-            {
-              can_command_buffer[can_command_buffer_wp] = blaster_data[i];
-              can_command_buffer_wp++;
-              can_command_buffer_wp %= BUFFER_SIZE;
-            }
-            sendUdpData(msg.can_id, blaster_data, 22);
-            blaster_cycle++;
-          }
-          else if (blaster_cycle == 3)
-          {
-            uint8_t blaster_data[26];
-            blaster_data[0] = 0x55;
-            blaster_data[1] = 0x1A;
-            blaster_data[2] = 0x04;
-            blaster_data[3] = 0x00;
-            appendCRC8CheckSum(blaster_data, 4);
-            blaster_data[4] = 0x09;
-            blaster_data[5] = 0x18;
-            blaster_data[6] = blaster_counter[0] & 0xFF;
-            blaster_data[7] = blaster_counter[0] >> 8;
-            blaster_data[8] = 0x00;
-            blaster_data[9] = 0x3F;
-            blaster_data[10] = 0x32;
-            blaster_data[11] = 0x05;
-            blaster_data[12] = 0xFF;
-            blaster_data[13] = 0x00;
-            blaster_data[14] = 0x00;
-            blaster_data[15] = 0x7F;
-            blaster_data[16] = 0x46;
-            blaster_data[17] = 0x00;
-            blaster_data[18] = 0x64;
-            blaster_data[19] = 0x00;
-            blaster_data[20] = 0x64;
-            blaster_data[21] = 0x00;
-            blaster_data[22] = 0x30;
-            blaster_data[23] = 0x00;
-            blaster_data[24] = 0x00;
-            blaster_data[25] = 0x00;
-            appendCRC16CheckSum(blaster_data, 26);
-            blaster_counter[0]++;
-            for (i = 0; i < 26; i++)
-            {
-              can_command_buffer[can_command_buffer_wp] = blaster_data[i];
-              can_command_buffer_wp++;
-              can_command_buffer_wp %= BUFFER_SIZE;
-            }
-            sendUdpData(msg.can_id, blaster_data, 26);
-            blaster_cycle = 0;
-            command_blaster = 0;
+            can_command_buffer[can_command_buffer_wp] = header_command[i];
+            can_command_buffer_wp++;
+            can_command_buffer_wp %= BUFFER_SIZE;
           }
         }
 
-        // 脱力指示
-        //            	if(send_data[1] == 0x0F){
-        //            		send_data[1]  = 0;
-        //            	}
-        if (send_data[1] == 0x1B)
+        // LED on
         {
-          // Get time stamp
-          time_stamp[0] = send_data[6];
-          time_stamp[1] = send_data[7];
+          uint8_t command_no = 11;
+          uint8_t header_command[0xFF];
+          uint8_t idx = 0;
+          uint8_t command_length = can_command_list[command_no][3];
+          for (i = 2; i < command_length; i++)
+          {
+            header_command[idx] = can_command_list[command_no][i];
+
+            if (i == 5 && can_command_list[command_no][5] == 0xFF)
+            {
+              appendCRC8CheckSum(header_command, 4);
+            }
+            if (i == 8 && can_command_list[command_no][8] == 0xFF)
+            {
+              header_command[idx] = counter_led & 0xFF;
+            }
+            if (i == 9 && can_command_list[command_no][9] == 0xFF)
+            {
+              header_command[idx] = (counter_led >> 8) & 0xFF;
+            }
+            idx++;
+          }
+          appendCRC16CheckSum(header_command, command_length);
+
+          for (int i = 0; i < command_length; i++)
+          {
+            can_command_buffer[can_command_buffer_wp] = header_command[i];
+            can_command_buffer_wp++;
+            can_command_buffer_wp %= BUFFER_SIZE;
+          }
+
+          counter_led++;
+        }
+
+        // FAST MODE
+        {
+          uint8_t command_no = 22;
+          uint8_t header_command[0xFF];
+          uint8_t idx = 0;
+          uint8_t command_length = can_command_list[command_no][3];
+          for (i = 2; i < command_length; i++)
+          {
+            header_command[idx] = can_command_list[command_no][i];
+
+            if (i == 5 && can_command_list[command_no][5] == 0xFF)
+            {
+              appendCRC8CheckSum(header_command, 4);
+            }
+            if (i == 8 && can_command_list[command_no][8] == 0xFF)
+            {
+              header_command[idx] = counter_mode & 0xFF;
+            }
+            if (i == 9 && can_command_list[command_no][9] == 0xFF)
+            {
+              header_command[idx] = (counter_mode >> 8) & 0xFF;
+            }
+            idx++;
+          }
+          appendCRC16CheckSum(header_command, command_length);
+
+          for (int i = 0; i < command_length; i++)
+          {
+            can_command_buffer[can_command_buffer_wp] = header_command[i];
+            can_command_buffer_wp++;
+            can_command_buffer_wp %= BUFFER_SIZE;
+          }
+
+          counter_mode++;
+        }
+
+        // Enable Odometry Output
+        {
+          uint8_t command_no = 35;
+          uint8_t header_command[0xFF];
+          uint8_t idx = 0;
+          uint8_t command_length = can_command_list[command_no][3];
+          for (i = 2; i < command_length - 2; i++)
+          {
+            header_command[idx] = can_command_list[command_no][i];
+
+            if (i == 5 && can_command_list[command_no][5] == 0xFF)
+            {
+              appendCRC8CheckSum(header_command, 4);
+            }
+
+            idx++;
+          }
+          appendCRC16CheckSum(header_command, command_length);
+
+          for (int i = 0; i < command_length; i++)
+          {
+            can_command_buffer[can_command_buffer_wp] = header_command[i];
+            can_command_buffer_wp++;
+            can_command_buffer_wp %= BUFFER_SIZE;
+          }
+        }
+      }
+    }
+
+    // After Initialize Command
+    if (initial_task_flag)
+    {
+
+      // 10msec TASK
+      if (timer10msec_flag)
+      {
+        timer10msec_flag = 0;
+
+        if (command_lose == 1) // Lose
+        {
+          command_lose = 0;
+          // Lose command
+          int command_no = 36;
+
+          uint8_t header_command[0xFF];
+          uint8_t idx = 0;
+          uint8_t command_length = can_command_list[command_no][3];
+          for (i = 2; i < command_length; i++)
+          {
+            header_command[idx] = can_command_list[command_no][i];
+
+            if (i == 5 && can_command_list[command_no][5] == 0xFF)
+            {
+              appendCRC8CheckSum(header_command, 4);
+            }
+            if (i == 8 && can_command_list[command_no][8] == 0xFF)
+            {
+              header_command[idx] = counter_lose & 0xFF;
+            }
+            if (i == 9 && can_command_list[command_no][9] == 0xFF)
+            {
+              header_command[idx] = (counter_lose >> 8) & 0xFF;
+            }
+
+            idx++;
+          }
+          appendCRC16CheckSum(header_command, command_length);
+
+          for (int i = 0; i < command_length; i++)
+          {
+            can_command_buffer[can_command_buffer_wp] = header_command[i];
+            can_command_buffer_wp++;
+            can_command_buffer_wp %= BUFFER_SIZE;
+          }
+
+          counter_lose++;
+        }
+
+        if (command_lose == 2) // Recoover
+        {
+          command_lose = 0;
+          // Recover command
+          int command_no = 37;
+
+          uint8_t header_command[0xFF];
+          uint8_t idx = 0;
+          uint8_t command_length = can_command_list[command_no][3];
+          for (i = 2; i < command_length; i++)
+          {
+            header_command[idx] = can_command_list[command_no][i];
+
+            if (i == 5 && can_command_list[command_no][5] == 0xFF)
+            {
+              appendCRC8CheckSum(header_command, 4);
+            }
+            if (i == 8 && can_command_list[command_no][8] == 0xFF)
+            {
+              header_command[idx] = counter_lose & 0xFF;
+            }
+            if (i == 9 && can_command_list[command_no][9] == 0xFF)
+            {
+              header_command[idx] = (counter_lose >> 8) & 0xFF;
+            }
+
+            idx++;
+          }
+          appendCRC16CheckSum(header_command, command_length);
+
+          for (int i = 0; i < command_length; i++)
+          {
+            can_command_buffer[can_command_buffer_wp] = header_command[i];
+            can_command_buffer_wp++;
+            can_command_buffer_wp %= BUFFER_SIZE;
+          }
+
+          counter_lose++;
+        }
+
+        // LED Command
+        if (command_led.enable)
+        {
+          command_led.enable = 0;
+          // LED command
+          for (int command_no = 9; command_no < 11; command_no++)
+          {
+            uint8_t header_command[0xFF];
+            uint8_t idx = 0;
+            uint8_t command_length = can_command_list[command_no][3];
+            for (i = 2; i < command_length; i++)
+            {
+              header_command[idx] = can_command_list[command_no][i];
+
+              if (i == 5 && can_command_list[command_no][5] == 0xFF)
+              {
+                appendCRC8CheckSum(header_command, 4);
+              }
+              if (i == 8 && can_command_list[command_no][8] == 0xFF)
+              {
+                header_command[idx] = counter_led & 0xFF;
+              }
+              if (i == 9 && can_command_list[command_no][9] == 0xFF)
+              {
+                header_command[idx] = (counter_led >> 8) & 0xFF;
+              }
+
+              // RED
+              if (i == 16)
+              {
+                header_command[idx] = command_led.red;
+              }
+
+              // GREEN
+              if (i == 17)
+              {
+                header_command[idx] = command_led.green;
+              }
+
+              // BLUE
+              if (i == 18)
+              {
+                header_command[idx] = command_led.blue;
+              }
+
+              idx++;
+            }
+            appendCRC16CheckSum(header_command, command_length);
+
+            for (int i = 0; i < command_length; i++)
+            {
+              can_command_buffer[can_command_buffer_wp] = header_command[i];
+              can_command_buffer_wp++;
+              can_command_buffer_wp %= BUFFER_SIZE;
+            }
+
+            counter_led++;
+          }
+        }
+
+        // Blaster Command
+        if (command_blaster)
+        {
+          command_blaster = 0;
+
+          // Blaster
+          for (int command_no = 7; command_no < 9; command_no++)
+          {
+            uint8_t header_command[0xFF];
+            uint8_t idx = 0;
+            uint8_t command_length = can_command_list[command_no][3];
+            for (i = 2; i < command_length; i++)
+            {
+              header_command[idx] = can_command_list[command_no][i];
+
+              if (i == 5 && can_command_list[command_no][5] == 0xFF)
+              {
+                appendCRC8CheckSum(header_command, 4);
+              }
+              if (i == 8 && can_command_list[command_no][8] == 0xFF)
+              {
+                header_command[idx] = counter_blaster & 0xFF;
+              }
+              if (i == 9 && can_command_list[command_no][9] == 0xFF)
+              {
+                header_command[idx] = (counter_blaster >> 8) & 0xFF;
+              }
+
+              idx++;
+            }
+            appendCRC16CheckSum(header_command, command_length);
+
+            for (int i = 0; i < command_length; i++)
+            {
+              can_command_buffer[can_command_buffer_wp] = header_command[i];
+              can_command_buffer_wp++;
+              can_command_buffer_wp %= BUFFER_SIZE;
+            }
+
+            counter_blaster++;
+          }
+        }
+
+        // Twist Command
+        {
+          uint8_t command_no = 5;
+          uint8_t command_length = can_command_list[command_no][3];
+          uint8_t header_command[0xFF];
+          uint8_t idx = 0;
 
           // Linear X and Y
           uint16_t linear_x = 256 * command_twist.linear.x + 1024;
           uint16_t linear_y = 256 * command_twist.linear.y + 1024;
           int16_t angular_z = 256 * command_twist.angular.z + 1024;
 
-          send_data[13] &= 0xC0;
-          send_data[13] |= (linear_x >> 5) & 0x3F;
-          send_data[12] = 0x00;
-          send_data[12] |= linear_x << 3;
-          send_data[12] |= (linear_y >> 8) & 0x07;
-          send_data[11] = 0x00;
-          send_data[11] |= linear_y & 0xFF;
+          for (i = 2; i < command_length; i++)
+          {
+            header_command[idx] = can_command_list[command_no][i];
 
-          send_data[17] = (angular_z >> 4) & 0xFF; //0x40;
-          send_data[16] = (angular_z << 4) | 0x08; //0x08;
+            if (i == 5 && can_command_list[command_no][5] == 0xFF)
+            {
+              appendCRC8CheckSum(header_command, 4);
+            }
+            if (i == 8 && can_command_list[command_no][8] == 0xFF)
+            {
+              header_command[idx] = command_counter[command_no] & 0xFF;
+            }
+            if (i == 9 && can_command_list[command_no][9] == 0xFF)
+            {
+              header_command[idx] = (command_counter[command_no] >> 8) & 0xFF;
+            }
+            command_counter[i]++;
 
-          send_data[18] = 0x00;
+            switch (i)
+            {
+            case 15:
+              header_command[idx] = can_command_list[command_no][i] & 0xC0;
+              header_command[idx] |= (linear_x >> 5) & 0x3F;
+              break;
+            case 14:
+              header_command[idx] = linear_x << 3;
+              header_command[idx] |= (linear_y >> 8) & 0x07;
+              break;
+            case 13:
+              header_command[idx] = linear_y & 0xFF;
+              break;
+            case 19:
+              header_command[idx] = (angular_z >> 4) & 0xFF; //0x40;
+              break;
+            case 18:
+              header_command[idx] = (angular_z << 4) | 0x08; //0x08;
+              break;
+            case 20:
+              header_command[idx] = 0x00;
+              break;
+            case 21:
+              header_command[idx] = 0x02 | ((angular_z << 2) & 0xFF);
+              break;
+            case 22:
+              header_command[idx] = (angular_z >> 6) & 0xFF; // 0x10;
+              break;
+            case 23:
+              header_command[idx] = 0x04;
+              break;
+            case 24:
+              header_command[idx] = 0x0C; // Enable Flag 4:x-y 8:yaw 0x0c
+              break;
+            case 25:
+              header_command[idx] = 0x00;
+              break;
+            case 26:
+              header_command[idx] = 0x04;
+              break;
+            default:
+              break;
+            }
 
-          send_data[19] = 0x02 | ((angular_z << 2) & 0xFF);
-          send_data[20] = (angular_z >> 6) & 0xFF; // 0x10;
-
-          send_data[21] = 0x04;
-          send_data[22] = 0x0C; // Enable Flag 4:x-y 8:yaw 0x0c
-          send_data[23] = 0x00;
-          send_data[24] = 0x04;
-
-          send_data[send_data_size - 2] = 0;
-          send_data[send_data_size - 1] = 0;
-          appendCRC16CheckSum(send_data, send_data_size);
-          test_counter++;
+            idx++;
+          }
+          appendCRC16CheckSum(header_command, command_length);
+          for (int i = 0; i < command_length; i++)
+          {
+            can_command_buffer[can_command_buffer_wp] = header_command[i];
+            can_command_buffer_wp++;
+            can_command_buffer_wp %= BUFFER_SIZE;
+          }
         }
-        if (send_data[1] == 0x14 && send_data[5] == 0x04)
+
+        // Gimbal Command
         {
-          // Linear X and Y
+          uint8_t command_no = 4;
+          uint8_t command_length = can_command_list[command_no][3];
+          uint8_t header_command[0xFF];
+          uint8_t idx = 0;
+
+          // Angular X and Y
           int16_t angular_y = -1024 * command_twist.angular.y;
           int16_t angular_z = -1024 * command_twist.angular.z;
 
-          send_data[14] = (angular_y >> 8) & 0xFF;
-          send_data[13] = angular_y & 0xFF;
-          send_data[16] = (angular_z >> 8) & 0xFF;
-          send_data[15] = angular_z & 0xFF;
+          for (i = 2; i < command_length; i++)
+          {
+            header_command[idx] = can_command_list[command_no][i];
 
-          send_data[send_data_size - 2] = 0;
-          send_data[send_data_size - 1] = 0;
-          appendCRC16CheckSum(send_data, send_data_size);
+            if (i == 5 && can_command_list[command_no][5] == 0xFF)
+            {
+              appendCRC8CheckSum(header_command, 4);
+            }
+            if (i == 8 && can_command_list[command_no][8] == 0xFF)
+            {
+              header_command[idx] = command_counter[command_no] & 0xFF;
+            }
+            if (i == 9 && can_command_list[command_no][9] == 0xFF)
+            {
+              header_command[idx] = (command_counter[command_no] >> 8) & 0xFF;
+            }
+            command_counter[command_no]++;
+
+            switch (i)
+            {
+            case 16:
+              header_command[idx] = (angular_y >> 8) & 0xFF;
+              break;
+            case 15:
+              header_command[idx] = angular_y & 0xFF;
+              break;
+            case 18:
+              header_command[idx] = (angular_z >> 8) & 0xFF;
+              break;
+            case 17:
+              header_command[idx] = angular_z & 0xFF;
+              break;
+            default:
+              break;
+            }
+
+            idx++;
+          }
+          appendCRC16CheckSum(header_command, command_length);
+          for (int i = 0; i < command_length; i++)
+          {
+            can_command_buffer[can_command_buffer_wp] = header_command[i];
+            can_command_buffer_wp++;
+            can_command_buffer_wp %= BUFFER_SIZE;
+          }
         }
 
-        // Smartphone touch event override
-        if (send_data[0] == 0x55 &&
-            send_data[1] == 0x0F &&
-            send_data[2] == 0x04 &&
-            send_data[3] == 0xA2 &&
-            send_data[4] == 0x09 &&
-            send_data[11] == 0x02)
+        // 10msec Task
+        for (i = 0; i < COMMAND_LIST_SIZE; i++)
         {
-          send_data[11] = 0;
-          // Recalcuration CRC16
-          send_data[send_data_size - 2] = 0;
-          send_data[send_data_size - 1] = 0;
-          appendCRC16CheckSum(send_data, send_data_size);
+          if (can_command_list[i][1] == 1 && i != 5 && i != 4)
+          {
+            set_can_command((uint8_t)i);
+          }
         }
+      }
 
-        // Extra Data Output Enable
-//        if (
-//                send_data[1] != 0x0E &&
-//                send_data[4] == 0x09 &&
-//	            send_data[5] == 0x03
-//        		)
-//        {// rmeove
-//          send_data[send_data_size - 2] = 0;
-//          send_data[send_data_size - 1] = 0;
-//        }
+      // 100msec TASK
+      if (timer100msec_flag)
+      {
+        timer100msec_flag = 0;
 
-        sendUdpData(msg.can_id, send_data, send_data_size);
-        for (i = 0; i < send_data_size; i++)
+        for (i = 0; i < COMMAND_LIST_SIZE; i++)
         {
-          can_command_buffer[can_command_buffer_wp] = send_data[i];
-          can_command_buffer_wp++;
-          can_command_buffer_wp %= BUFFER_SIZE;
+          if (can_command_list[i][1] == 10)
+          {
+            set_can_command((uint8_t)i);
+          }
         }
+      }
+
+      // 1sec TASK
+      if (timer1sec_flag)
+      {
+        timer1sec_flag = 0;
+
+        for (i = 0; i < COMMAND_LIST_SIZE; i++)
+        {
+          if (can_command_list[i][1] == 100)
+          {
+            set_can_command((uint8_t)i);
+          }
+        }
+      }
+
+      // 10sec TASK
+      if (timer10sec_flag)
+      {
+        timer10sec_flag = 0;
       }
     }
 
-    // others
-    if (buffer_rp2 != buffer_wp2)
+    // Receive from RoboMaster S1
+    while (buffer_rp != buffer_wp)
     {
-      msg = rx_msg_buffer2[buffer_rp2];
-      ret = parseCanData(msg.can_id, msg.data, msg.dlc, send_data, &send_data_size);
-      buffer_rp2++;
-      buffer_rp2 %= BUFFER_SIZE;
+      CANRxMsg msg;
+      msg = rx_msg_buffer[buffer_rp];
+      ret = parseCanData(msg.can_id, msg.data, msg.dlc, received_data, &received_data_size);
+      buffer_rp++;
+      buffer_rp %= BUFFER_SIZE;
       if (ret)
       {
-        sendUdpData(msg.can_id, send_data, send_data_size);
+        //sendUdpData(msg.can_id, received_data, received_data_size);
+
+        char *out_str;
+        char *num_str;
+
+        float_uint8 base_odom_yaw_raw[5];
+        float_uint8 quaternion[5];
+        uint32_t base_odom_yaw;
+
+        switch (msg.can_id)
+        {
+
+        // Motion Controller Output Data
+        case ID_0x202:
+        {
+          if (received_data[1] == 0x3D && received_data[4] == 0x03 && received_data[5] == 0x09)
+          {
+            int flag = (received_data[24] >> 7) & 0x01;
+            base_odom_yaw = ((((uint16_t)received_data[24]) << 8) | (((uint16_t)received_data[23]) << 0));
+            if (flag == 0)
+            {
+              int shift = (0x86 - ((received_data[24] << 1) | (received_data[23] >> 7)));
+              base_odom_yaw = ((1 << 7) | received_data[23]) >> shift;
+              base_odom_yaw *= -1;
+            }
+            else
+            {
+              int shift = (0x186 - ((received_data[24] << 1) | (received_data[23] >> 7)));
+              base_odom_yaw = ((1 << 7) | received_data[23]) >> shift;
+            }
+            if (received_data[24] == 0 && received_data[23] == 0)
+            {
+              base_odom_yaw = 0;
+            }
+
+            // unknown angle filtered value
+            base_odom_yaw_raw[0].uint8_data[0] = received_data[35];
+            base_odom_yaw_raw[0].uint8_data[1] = received_data[36];
+            base_odom_yaw_raw[0].uint8_data[2] = received_data[37];
+            base_odom_yaw_raw[0].uint8_data[3] = received_data[38];
+            base_odom_yaw_raw[1].uint8_data[0] = received_data[39];
+            base_odom_yaw_raw[1].uint8_data[1] = received_data[40];
+            base_odom_yaw_raw[1].uint8_data[2] = received_data[41];
+            base_odom_yaw_raw[1].uint8_data[3] = received_data[42];
+            base_odom_yaw_raw[2].uint8_data[0] = received_data[43];
+            base_odom_yaw_raw[2].uint8_data[1] = received_data[44];
+            base_odom_yaw_raw[2].uint8_data[2] = received_data[45];
+            base_odom_yaw_raw[2].uint8_data[3] = received_data[46];
+            base_odom_yaw_raw[3].uint8_data[0] = received_data[47];
+            base_odom_yaw_raw[3].uint8_data[1] = received_data[48];
+            base_odom_yaw_raw[3].uint8_data[2] = received_data[49];
+            base_odom_yaw_raw[3].uint8_data[3] = received_data[50];
+            base_odom_yaw_raw[4].uint8_data[0] = received_data[51];
+            base_odom_yaw_raw[4].uint8_data[1] = received_data[52];
+            base_odom_yaw_raw[4].uint8_data[2] = received_data[53];
+            base_odom_yaw_raw[4].uint8_data[3] = received_data[54];
+          }
+
+          if (received_data[1] == 0x31 && received_data[4] == 0x03 && received_data[5] == 0x04)
+          {
+            // ~20 is unknown counter and state
+            quaternion[0].uint8_data[0] = received_data[21];
+            quaternion[0].uint8_data[1] = received_data[22];
+            quaternion[0].uint8_data[2] = received_data[23];
+            quaternion[0].uint8_data[3] = received_data[24];
+            quaternion[1].uint8_data[0] = received_data[25];
+            quaternion[1].uint8_data[1] = received_data[26];
+            quaternion[1].uint8_data[2] = received_data[27];
+            quaternion[1].uint8_data[3] = received_data[28];
+            quaternion[2].uint8_data[0] = received_data[29];
+            quaternion[2].uint8_data[1] = received_data[30];
+            quaternion[2].uint8_data[2] = received_data[31];
+            quaternion[2].uint8_data[3] = received_data[32];
+            quaternion[3].uint8_data[0] = received_data[33];
+            quaternion[3].uint8_data[1] = received_data[34];
+            quaternion[3].uint8_data[2] = received_data[35];
+            quaternion[3].uint8_data[3] = received_data[36];
+
+            int32_t int_data1;
+            uint32_t uint32_data = received_data[40];
+            uint32_data = (uint32_data << 8) | received_data[39];
+            uint32_data = (uint32_data << 8) | received_data[38];
+            uint32_data = (uint32_data << 8) | received_data[37];
+            int_data1 = (int32_t)uint32_data;
+
+            int32_t int_data2;
+            uint32_data = received_data[44];
+            uint32_data = (uint32_data << 8) | received_data[43];
+            uint32_data = (uint32_data << 8) | received_data[42];
+            uint32_data = (uint32_data << 8) | received_data[41];
+            int_data2 = (int32_t)uint32_data;
+
+            uint8_t battery_soc = received_data[45];
+          }
+
+          // Counter
+          if (received_data[1] == 0x39 && received_data[4] == 0x03 && received_data[5] == 0x0A)
+          {
+            uint32_t counter = 0;
+            counter = (received_data[14] & 0x0F) * 10000;
+            counter += (received_data[15] & 0x0F) * 1000;
+            counter += (received_data[16] & 0x0F) * 100;
+            counter += (received_data[17] & 0x0F) * 10;
+            counter += (received_data[18] & 0x0F) * 1;
+          }
+
+          // Odometry Lab Mode Data
+          if (received_data[1] == 0x6F && received_data[4] == 0x03 && received_data[5] == 0x09)
+          {
+            // Odom in Lab mode
+            uint32_t data;
+            int32_t int_data;
+            uint16_t data16;
+            int16_t int_data16;
+
+            int16_t wheel_angular_velocity[4];
+
+            data = received_data[16];
+            data = (data << 8) | received_data[15];
+            data = (data << 8) | received_data[14];
+            data = (data << 8) | received_data[13];
+            uint32_t odom_counter = (int32_t)data;
+
+            data = received_data[20];
+            data = (data << 8) | received_data[19];
+            data = (data << 8) | received_data[18];
+            data = (data << 8) | received_data[17];
+            uint32_t odom_counter2 = (int32_t)data;
+
+            // Wheel Angular Velocity
+            // Unit is RPM
+            data16 = received_data[22];
+            data16 = (data16 << 8) | received_data[21];
+            wheel_angular_velocity[0] = (int16_t)data16;
+
+            data16 = received_data[24];
+            data16 = (data16 << 8) | received_data[23];
+            wheel_angular_velocity[1] = (int16_t)data16;
+
+            data16 = received_data[26];
+            data16 = (data16 << 8) | received_data[25];
+            wheel_angular_velocity[2] = (int16_t)data16;
+
+            data16 = received_data[28];
+            data16 = (data16 << 8) | received_data[27];
+            wheel_angular_velocity[3] = (int16_t)data16;
+
+            float wheel_angle[4];
+            // wheel position
+            data16 = received_data[30];
+            data16 = (data16 << 8) | received_data[29];
+            data16 = data16 << 1;
+            int_data16 = (int16_t)data16;
+            wheel_angle[0] = int_data16 / 32767.0 * 180.0;
+
+            data16 = received_data[32];
+            data16 = (data16 << 8) | received_data[31];
+            data16 = data16 << 1;
+            int_data16 = (int16_t)data16;
+            wheel_angle[1] = int_data16 / 32767.0 * 180.0;
+
+            data16 = received_data[34];
+            data16 = (data16 << 8) | received_data[33];
+            data16 = data16 << 1;
+            int_data16 = (int16_t)data16;
+            wheel_angle[2] = int_data16 / 32767.0 * 180.0;
+
+            data16 = received_data[36];
+            data16 = (data16 << 8) | received_data[35];
+            data16 = data16 << 1;
+            int_data16 = (int16_t)data16;
+            wheel_angle[3] = int_data16 / 32767.0 * 180.0;
+
+            int32_t m_bus_update_count[4];
+            // wheel update count
+            data = received_data[40];
+            data = (data << 8) | received_data[39];
+            data = (data << 8) | received_data[38];
+            data = (data << 8) | received_data[37];
+            m_bus_update_count[0] = (int32_t)data;
+
+            data = received_data[44];
+            data = (data << 8) | received_data[43];
+            data = (data << 8) | received_data[42];
+            data = (data << 8) | received_data[41];
+            m_bus_update_count[1] = (int32_t)data;
+
+            data = received_data[48];
+            data = (data << 8) | received_data[47];
+            data = (data << 8) | received_data[46];
+            data = (data << 8) | received_data[45];
+            m_bus_update_count[2] = (int32_t)data;
+
+            data = received_data[52];
+            data = (data << 8) | received_data[51];
+            data = (data << 8) | received_data[50];
+            data = (data << 8) | received_data[49];
+            m_bus_update_count[3] = (int32_t)data;
+
+            // IMU Data
+            float_uint8 union_data;
+
+            float mag_x;
+            float mag_y;
+            float g_x;
+            float g_y;
+            float g_z;
+            float gyro_x;
+            float gyro_y;
+            float gyro_z;
+            float roll, pitch, yaw;
+
+            union_data.uint8_data[0] = received_data[53 + 4];
+            union_data.uint8_data[1] = received_data[54 + 4];
+            union_data.uint8_data[2] = received_data[55 + 4];
+            union_data.uint8_data[3] = received_data[56 + 4];
+            mag_x = union_data.float_data;
+
+            union_data.uint8_data[0] = received_data[53 + 4 * 2];
+            union_data.uint8_data[1] = received_data[54 + 4 * 2];
+            union_data.uint8_data[2] = received_data[55 + 4 * 2];
+            union_data.uint8_data[3] = received_data[56 + 4 * 2];
+            mag_y = union_data.float_data;
+
+            // mag_z is blank
+
+            union_data.uint8_data[0] = received_data[53 + 4 * 4];
+            union_data.uint8_data[1] = received_data[54 + 4 * 4];
+            union_data.uint8_data[2] = received_data[55 + 4 * 4];
+            union_data.uint8_data[3] = received_data[56 + 4 * 4];
+            g_x = union_data.float_data;
+
+            union_data.uint8_data[0] = received_data[53 + 4 * 5];
+            union_data.uint8_data[1] = received_data[54 + 4 * 5];
+            union_data.uint8_data[2] = received_data[55 + 4 * 5];
+            union_data.uint8_data[3] = received_data[56 + 4 * 5];
+            g_y = union_data.float_data;
+
+            union_data.uint8_data[0] = received_data[53 + 4 * 6];
+            union_data.uint8_data[1] = received_data[54 + 4 * 6];
+            union_data.uint8_data[2] = received_data[55 + 4 * 6];
+            union_data.uint8_data[3] = received_data[56 + 4 * 6];
+            g_z = union_data.float_data;
+
+            union_data.uint8_data[0] = received_data[53 + 4 * 7];
+            union_data.uint8_data[1] = received_data[54 + 4 * 7];
+            union_data.uint8_data[2] = received_data[55 + 4 * 7];
+            union_data.uint8_data[3] = received_data[56 + 4 * 7];
+            gyro_x = union_data.float_data;
+
+            union_data.uint8_data[0] = received_data[53 + 4 * 8];
+            union_data.uint8_data[1] = received_data[54 + 4 * 8];
+            union_data.uint8_data[2] = received_data[55 + 4 * 8];
+            union_data.uint8_data[3] = received_data[56 + 4 * 8];
+            gyro_y = union_data.float_data;
+
+            union_data.uint8_data[0] = received_data[53 + 4 * 9];
+            union_data.uint8_data[1] = received_data[54 + 4 * 9];
+            union_data.uint8_data[2] = received_data[55 + 4 * 9];
+            union_data.uint8_data[3] = received_data[56 + 4 * 9];
+            gyro_z = union_data.float_data;
+
+            union_data.uint8_data[0] = received_data[53 + 4 * 11];
+            union_data.uint8_data[1] = received_data[54 + 4 * 11];
+            union_data.uint8_data[2] = received_data[55 + 4 * 11];
+            union_data.uint8_data[3] = received_data[56 + 4 * 11];
+            yaw = union_data.float_data;
+
+            union_data.uint8_data[0] = received_data[53 + 4 * 12];
+            union_data.uint8_data[1] = received_data[54 + 4 * 12];
+            union_data.uint8_data[2] = received_data[55 + 4 * 12];
+            union_data.uint8_data[3] = received_data[56 + 4 * 12];
+            pitch = union_data.float_data;
+
+            union_data.uint8_data[0] = received_data[53 + 4 * 13];
+            union_data.uint8_data[1] = received_data[54 + 4 * 13];
+            union_data.uint8_data[2] = received_data[55 + 4 * 13];
+            union_data.uint8_data[3] = received_data[56 + 4 * 13];
+            roll = union_data.float_data;
+          }
+
+          break;
+        }
+
+        // Gimbal Output Data
+        case ID_0x203: //0x203
+        {
+          // From Gimbal
+          if (received_data[1] == 0x11 && received_data[4] == 0x04 && received_data[5] == 0x03)
+          {
+            // Yaw Angle
+            uint16_t data = received_data[12];
+            data = (data << 8) | received_data[11];
+            gimbal_base_yaw_angle = -(int16_t)(data) / 10.0;
+            data = received_data[14];
+            data = (data << 8) | received_data[13];
+            gimbal_map_yaw_angle = -(int16_t)(data) / 100.0;
+
+            //printf("%lf, %lf\n",gimbal_base_yaw_angle_,gimbal_map_yaw_angle_);
+          }
+          if (received_data[1] == 0x16 && received_data[4] == 0x04 && received_data[5] == 0x09)
+          {
+            // Pitch Angle
+            uint32_t data = received_data[14];
+            data = (data << 8) | received_data[13];
+            data = (data << 8) | received_data[12];
+            data = (data << 8) | received_data[11];
+            gimbal_map_pitch_angle = (int32_t)(data) / 20000000.0 * 30.0;
+            data = received_data[18];
+            data = (data << 8) | received_data[17];
+            data = (data << 8) | received_data[16];
+            data = (data << 8) | received_data[15];
+            gimbal_base_pitch_angle = (int32_t)(data) / 20000000.0 * 30.0;
+            //printf("%lf, %lf\n", gimbal_map_pitch_angle_, gimbal_base_pitch_angle_);
+          }
+          break;
+        }
+        case ID_0x204: //0x204
+        {
+          if (received_data[4] == 0x17 && received_data[5] == 0x09)
+          {
+          }
+          break;
+        }
+        default:
+          break;
+        }
+
+        // while (CDC_Transmit_FS((uint8_t *)received_data, received_data_size) == USBD_BUSY)
+        // {
+        // }
+        break;
+      }
+    }
+
+    // Receive Command from USB
+    uint8_t usb_received_data[BUFFER_SIZE];
+    uint16_t usb_received_data_size = 0;
+    uint8_t usb_parsed_data[255];
+    uint8_t usb_parsed_data_size = 0;
+    while (usb_rBuf_rp != usb_rBuf_wp)
+    {
+      usb_received_data[usb_received_data_size] = usb_rBuf[usb_rBuf_rp];
+      usb_received_data_size++;
+      usb_rBuf_rp++;
+      usb_rBuf_rp %= BUFFER_SIZE;
+    }
+    ret = parseUsbData(usb_received_data, usb_received_data_size, usb_parsed_data, &usb_parsed_data_size);
+    if(ret && usb_parsed_data_size > 7)
+    {
+      if (usb_parsed_data[4] == 0x01) // Twist command No.
+      {
+        twist received_twist;
+        int ret = parseTwistCommandData(usb_parsed_data, usb_parsed_data_size, &received_twist);
+        if (ret)
+        {
+          command_twist = received_twist;
+        }
+      }
+      if (usb_parsed_data[4] == 0x02) // Blaster command No.
+      {
+        int received_blaster;
+        received_blaster = parseBlasterCommandData(usb_parsed_data, usb_parsed_data_size);
+        if (received_blaster)
+        {
+          command_blaster = received_blaster;
+        }
+      }
+      if (usb_parsed_data[4] == 0x03) // Lose command No.
+      {
+        int received_lose;
+        received_lose = parseLoseCommandData(usb_parsed_data, usb_parsed_data_size);
+        if (received_lose)
+        {
+          command_lose = received_lose;
+        }
+      }
+      if (usb_parsed_data[4] == 0x04) // LED command No.
+      {
+        led received_led;
+        int ret = parseLEDCommandData(usb_parsed_data, usb_parsed_data_size, &received_led);
+        if (ret)
+        {
+          command_led = received_led;
+        }
       }
     }
 
     // Transmit CAN Command
-    if (can_command_buffer_rp != can_command_buffer_wp)
+    while (can_command_buffer_rp != can_command_buffer_wp &&
+        HAL_CAN_GetTxMailboxesFreeLevel(&hcan1) != 2)
     {
+      uint8_t TxData[8];
+      CAN_TxHeaderTypeDef TxHeader;
+      uint32_t TxMailbox;
+
       int can_command_buffer_size = (can_command_buffer_wp - can_command_buffer_rp + BUFFER_SIZE) % BUFFER_SIZE;
       if (can_command_buffer_size >= 8)
       {
-        TxHeader2.DLC = 8;
+        TxHeader.DLC = 8;
       }
       else
       {
-        TxHeader2.DLC = can_command_buffer_size;
+        TxHeader.DLC = can_command_buffer_size;
       }
-      TxHeader2.StdId = 0x201;//RxHeader1.StdId;
-      TxHeader2.ExtId = 0x00;//RxHeader1.ExtId;
-      TxHeader2.RTR = CAN_RTR_DATA;
-      TxHeader2.IDE = CAN_ID_STD;
-      TxHeader2.TransmitGlobalTime = DISABLE;
-      for (i = 0; i < TxHeader2.DLC; i++)
+      TxHeader.StdId = 0x201; //RxHeader.StdId;
+      TxHeader.ExtId = 0x00;  //RxHeader.ExtId;
+      TxHeader.RTR = CAN_RTR_DATA;
+      TxHeader.IDE = CAN_ID_STD;
+      TxHeader.TransmitGlobalTime = DISABLE;
+      for (i = 0; i < TxHeader.DLC; i++)
       {
-        TxData2[i] = can_command_buffer[(can_command_buffer_rp + i) % BUFFER_SIZE];
+        TxData[i] = can_command_buffer[(can_command_buffer_rp + i) % BUFFER_SIZE];
       }
-      /* Start Transmission process */
-      int ret = HAL_CAN_AddTxMessage(&hcan2, &TxHeader2, TxData2, &TxMailbox2);
+      // Start Transmission process
+      int ret = HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox);
       if (ret == HAL_OK)
       {
-        can_command_buffer_rp += TxHeader2.DLC;
+        can_command_buffer_rp += TxHeader.DLC;
         can_command_buffer_rp %= BUFFER_SIZE;
       }
     }
@@ -713,6 +1209,7 @@ void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  RCC_PeriphCLKInitTypeDef PeriphClkInitStruct = {0};
 
   /** Configure LSE Drive Capability 
   */
@@ -743,14 +1240,19 @@ void SystemClock_Config(void)
   }
   /** Initializes the CPU, AHB and APB busses clocks 
   */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_6) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  PeriphClkInitStruct.PeriphClockSelection = RCC_PERIPHCLK_CLK48;
+  PeriphClkInitStruct.Clk48ClockSelection = RCC_CLK48SOURCE_PLL;
+  if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInitStruct) != HAL_OK)
   {
     Error_Handler();
   }
@@ -790,44 +1292,6 @@ static void MX_CAN1_Init(void)
   /* USER CODE BEGIN CAN1_Init 2 */
 
   /* USER CODE END CAN1_Init 2 */
-
-}
-
-/**
-  * @brief CAN2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_CAN2_Init(void)
-{
-
-  /* USER CODE BEGIN CAN2_Init 0 */
-
-  /* USER CODE END CAN2_Init 0 */
-
-  /* USER CODE BEGIN CAN2_Init 1 */
-
-  /* USER CODE END CAN2_Init 1 */
-  hcan2.Instance = CAN2;
-  hcan2.Init.Prescaler = 3;
-  hcan2.Init.Mode = CAN_MODE_NORMAL;
-  hcan2.Init.SyncJumpWidth = CAN_SJW_1TQ;
-  hcan2.Init.TimeSeg1 = CAN_BS1_13TQ;
-  hcan2.Init.TimeSeg2 = CAN_BS2_2TQ;
-  hcan2.Init.TimeTriggeredMode = DISABLE;
-  hcan2.Init.AutoBusOff = DISABLE;
-  hcan2.Init.AutoWakeUp = DISABLE;
-  hcan2.Init.AutoRetransmission = DISABLE;
-  hcan2.Init.ReceiveFifoLocked = DISABLE;
-  hcan2.Init.TransmitFifoPriority = ENABLE;
-  if (HAL_CAN_Init(&hcan2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN CAN2_Init 2 */
-
-  /* USER CODE END CAN2_Init 2 */
-
 }
 
 /**
@@ -849,9 +1313,9 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 96-1;
+  htim2.Init.Prescaler = 96 - 1;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 10000-1;
+  htim2.Init.Period = 10000;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -872,7 +1336,6 @@ static void MX_TIM2_Init(void)
   /* USER CODE BEGIN TIM2_Init 2 */
 
   /* USER CODE END TIM2_Init 2 */
-
 }
 
 /**
@@ -893,7 +1356,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOG_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LD3_Pin|LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, LD3_Pin | LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(USB_PowerSwitchOn_GPIO_Port, USB_PowerSwitchOn_Pin, GPIO_PIN_RESET);
@@ -905,14 +1368,14 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(USER_Btn_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : LD3_Pin LD2_Pin */
-  GPIO_InitStruct.Pin = LD3_Pin|LD2_Pin;
+  GPIO_InitStruct.Pin = LD3_Pin | LD2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pins : STLK_RX_Pin STLK_TX_Pin */
-  GPIO_InitStruct.Pin = STLK_RX_Pin|STLK_TX_Pin;
+  GPIO_InitStruct.Pin = STLK_RX_Pin | STLK_TX_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
@@ -931,21 +1394,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(USB_OverCurrent_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : USB_SOF_Pin USB_ID_Pin USB_DM_Pin USB_DP_Pin */
-  GPIO_InitStruct.Pin = USB_SOF_Pin|USB_ID_Pin|USB_DM_Pin|USB_DP_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  GPIO_InitStruct.Alternate = GPIO_AF10_OTG_FS;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : USB_VBUS_Pin */
-  GPIO_InitStruct.Pin = USB_VBUS_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(USB_VBUS_GPIO_Port, &GPIO_InitStruct);
-
 }
 
 /* USER CODE BEGIN 4 */
@@ -957,39 +1405,21 @@ static void MX_GPIO_Init(void)
   */
 static void CAN_FilterConfig(void)
 {
-  CAN_FilterTypeDef sFilterConfig1;
-  CAN_FilterTypeDef sFilterConfig2;
+  CAN_FilterTypeDef sFilterConfig;
 
   /*## Configure the CAN Filter ###########################################*/
-  sFilterConfig1.FilterBank = 0; //ID 0-13 for CAN1, 14+ is CAN2
-  sFilterConfig1.FilterMode = CAN_FILTERMODE_IDMASK;
-  sFilterConfig1.FilterScale = CAN_FILTERSCALE_32BIT;
-  sFilterConfig1.FilterIdHigh = 0x0000;
-  sFilterConfig1.FilterIdLow = 0x0000;
-  sFilterConfig1.FilterMaskIdHigh = 0x0000;
-  sFilterConfig1.FilterMaskIdLow = 0x0000;
-  sFilterConfig1.FilterFIFOAssignment = CAN_RX_FIFO0;
-  sFilterConfig1.FilterActivation = ENABLE;
-  sFilterConfig1.SlaveStartFilterBank = 14;
+  sFilterConfig.FilterBank = 0; //ID 0-13 for CAN1, 14+ is CAN2
+  sFilterConfig.FilterMode = CAN_FILTERMODE_IDMASK;
+  sFilterConfig.FilterScale = CAN_FILTERSCALE_32BIT;
+  sFilterConfig.FilterIdHigh = 0x0000;
+  sFilterConfig.FilterIdLow = 0x0000;
+  sFilterConfig.FilterMaskIdHigh = 0x0000;
+  sFilterConfig.FilterMaskIdLow = 0x0000;
+  sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO0;
+  sFilterConfig.FilterActivation = ENABLE;
+  sFilterConfig.SlaveStartFilterBank = 14;
 
-  if (HAL_CAN_ConfigFilter(&hcan1, &sFilterConfig1) != HAL_OK)
-  {
-    /* Filter configuration Error */
-    Error_Handler();
-  }
-
-  sFilterConfig2.FilterBank = 14; //ID 0-13 for CAN1, 14+ is CAN2
-  sFilterConfig2.FilterMode = CAN_FILTERMODE_IDMASK;
-  sFilterConfig2.FilterScale = CAN_FILTERSCALE_32BIT;
-  sFilterConfig2.FilterIdHigh = 0x0000;
-  sFilterConfig2.FilterIdLow = 0x0000;
-  sFilterConfig2.FilterMaskIdHigh = 0x0000;
-  sFilterConfig2.FilterMaskIdLow = 0x0000;
-  sFilterConfig2.FilterFIFOAssignment = CAN_RX_FIFO1;
-  sFilterConfig2.FilterActivation = ENABLE;
-  sFilterConfig2.SlaveStartFilterBank = 14;
-
-  if (HAL_CAN_ConfigFilter(&hcan2, &sFilterConfig2) != HAL_OK)
+  if (HAL_CAN_ConfigFilter(&hcan1, &sFilterConfig) != HAL_OK)
   {
     /* Filter configuration Error */
     Error_Handler();
@@ -1004,98 +1434,69 @@ static void CAN_FilterConfig(void)
   */
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
-  /* Get RX message */
-  if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader1, RxData1) == HAL_OK)
-  {
-    if (RxHeader1.StdId == 0x201)
-    {
-      //            TxHeader2.StdId = RxHeader1.StdId;
-      //            TxHeader2.ExtId = RxHeader1.ExtId;
-      //            TxHeader2.RTR = CAN_RTR_DATA;
-      //            TxHeader2.IDE = CAN_ID_STD;
-      //            TxHeader2.DLC = RxHeader1.DLC;
-      //            TxHeader2.TransmitGlobalTime = DISABLE;
-      //            memcpy(TxData2, RxData1, RxHeader1.DLC);
+  uint8_t RxData[8];
+  CAN_RxHeaderTypeDef RxHeader;
 
-      /* Start Transmission process */
-      //int ret = HAL_CAN_AddTxMessage(&hcan2, &TxHeader2, TxData2, &TxMailbox2);
-      //            while (ret != HAL_OK)
-      //            {
-      //            	ret = HAL_CAN_AddTxMessage(&hcan2, &TxHeader2, TxData2, &TxMailbox2);
-      //            }
+  /* Get RX message */
+  if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) == HAL_OK)
+  {
+    if (RxHeader.StdId != 0x201)
+    {
       CANRxMsg msg;
-      msg.can_id = ID_0x201;
-      msg.dlc = RxHeader1.DLC;
-      memcpy(msg.data, RxData1, RxHeader1.DLC);
-      rx_msg_buffer1[buffer_wp1] = msg;
-      buffer_wp1++;
-      buffer_wp1 %= BUFFER_SIZE;
+      switch (RxHeader.StdId)
+      {
+      case 0x202:
+        msg.can_id = ID_0x202;
+        break;
+      case 0x203:
+        msg.can_id = ID_0x203;
+        break;
+      case 0x204:
+        msg.can_id = ID_0x204;
+        break;
+      case 0x211:
+        msg.can_id = ID_0x211;
+        break;
+      case 0x212:
+        msg.can_id = ID_0x212;
+        break;
+      case 0x213:
+        msg.can_id = ID_0x213;
+        break;
+      case 0x214:
+        msg.can_id = ID_0x214;
+        break;
+      case 0x215:
+        msg.can_id = ID_0x215;
+        break;
+      case 0x216:
+        msg.can_id = ID_0x216;
+        break;
+      }
+      if (initial_task_flag)
+      {
+        msg.dlc = RxHeader.DLC;
+        memcpy(msg.data, RxData, RxHeader.DLC);
+        rx_msg_buffer[buffer_wp] = msg;
+        buffer_wp++;
+        buffer_wp %= BUFFER_SIZE;
+      }
     }
   }
 }
 
 void HAL_CAN_RxFifo0FullCallback(CAN_HandleTypeDef *hcan)
 {
+  uint8_t RxData[8];
+  CAN_RxHeaderTypeDef RxHeader;
+
   /* Get RX message */
-  if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader1, RxData1) == HAL_OK)
+  if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) == HAL_OK)
   {
-    if (RxHeader1.StdId == 0x201)
+    if (RxHeader.StdId != 0x201)
     {
-      //            TxHeader2.StdId = RxHeader1.StdId;
-      //            TxHeader2.ExtId = RxHeader1.ExtId;
-      //            TxHeader2.RTR = CAN_RTR_DATA;
-      //            TxHeader2.IDE = CAN_ID_STD;
-      //            TxHeader2.DLC = RxHeader1.DLC;
-      //            TxHeader2.TransmitGlobalTime = DISABLE;
-      //            memcpy(TxData2, RxData1, RxHeader1.DLC);
-
-      /* Start Transmission process */
-      //int ret = HAL_CAN_AddTxMessage(&hcan2, &TxHeader2, TxData2, &TxMailbox2);
-      //            while (ret != HAL_OK)
-      //            {
-      //            	ret = HAL_CAN_AddTxMessage(&hcan2, &TxHeader2, TxData2, &TxMailbox2);
-      //            }
       CANRxMsg msg;
-      msg.can_id = ID_0x201;
-      msg.dlc = RxHeader1.DLC;
-      memcpy(msg.data, RxData1, RxHeader1.DLC);
-      rx_msg_buffer1[buffer_wp1] = msg;
-      buffer_wp1++;
-      buffer_wp1 %= BUFFER_SIZE;
-    }
-  }
-}
-
-/**
-  * @brief  Rx Fifo 1 message pending callback
-  * @param  hcan: pointer to a CAN_HandleTypeDef structure that contains
-  *         the configuration information for the specified CAN.
-  * @retval None
-  */
-void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
-{
-  /* Get RX message */
-  if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO1, &RxHeader2, RxData2) == HAL_OK)
-  {
-    if (RxHeader2.StdId != 0x201)
-    {
-      TxHeader1.StdId = RxHeader2.StdId;
-      TxHeader1.ExtId = RxHeader2.ExtId;
-      TxHeader1.RTR = CAN_RTR_DATA;
-      TxHeader1.IDE = CAN_ID_STD;
-      TxHeader1.DLC = RxHeader2.DLC;
-      TxHeader1.TransmitGlobalTime = DISABLE;
-      memcpy(TxData1, RxData2, RxHeader2.DLC);
-
-      /* Start Transmission process */
-      int ret = HAL_CAN_AddTxMessage(&hcan1, &TxHeader1, TxData1, &TxMailbox1);
-      //                        while (ret != HAL_OK)
-      //                        {
-      //                        	ret = HAL_CAN_AddTxMessage(&hcan1, &TxHeader1, TxData1, &TxMailbox1);
-      //                        }
-
-      CANRxMsg msg;
-      switch (RxHeader2.StdId)
+      switch (RxHeader.StdId)
       {
       case 0x202:
         msg.can_id = ID_0x202;
@@ -1125,73 +1526,14 @@ void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan)
         msg.can_id = ID_0x216;
         break;
       }
-      msg.dlc = RxHeader2.DLC;
-      memcpy(msg.data, RxData2, RxHeader2.DLC);
-      rx_msg_buffer2[buffer_wp2] = msg;
-      buffer_wp2++;
-      buffer_wp2 %= BUFFER_SIZE;
-    }
-  }
-}
-
-void HAL_CAN_RxFifo1FullCallback(CAN_HandleTypeDef *hcan)
-{
-  /* Get RX message */
-  if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO1, &RxHeader2, RxData2) == HAL_OK)
-  {
-    if (RxHeader2.StdId != 0x201)
-    {
-      TxHeader1.StdId = RxHeader2.StdId;
-      TxHeader1.ExtId = RxHeader2.ExtId;
-      TxHeader1.RTR = CAN_RTR_DATA;
-      TxHeader1.IDE = CAN_ID_STD;
-      TxHeader1.DLC = RxHeader2.DLC;
-      TxHeader1.TransmitGlobalTime = DISABLE;
-      memcpy(TxData1, RxData2, RxHeader2.DLC);
-
-      /* Start Transmission process */
-      int ret = HAL_CAN_AddTxMessage(&hcan1, &TxHeader1, TxData1, &TxMailbox1);
-      //                        while (ret != HAL_OK)
-      //                        {
-      //                        	ret = HAL_CAN_AddTxMessage(&hcan1, &TxHeader1, TxData1, &TxMailbox1);
-      //                        }
-
-      CANRxMsg msg;
-      switch (RxHeader2.StdId)
+      if (initial_task_flag)
       {
-      case 0x202:
-        msg.can_id = ID_0x202;
-        break;
-      case 0x203:
-        msg.can_id = ID_0x203;
-        break;
-      case 0x204:
-        msg.can_id = ID_0x204;
-        break;
-      case 0x211:
-        msg.can_id = ID_0x211;
-        break;
-      case 0x212:
-        msg.can_id = ID_0x212;
-        break;
-      case 0x213:
-        msg.can_id = ID_0x213;
-        break;
-      case 0x214:
-        msg.can_id = ID_0x214;
-        break;
-      case 0x215:
-        msg.can_id = ID_0x215;
-        break;
-      case 0x216:
-        msg.can_id = ID_0x216;
-        break;
+        msg.dlc = RxHeader.DLC;
+        memcpy(msg.data, RxData, RxHeader.DLC);
+        rx_msg_buffer[buffer_wp] = msg;
+        buffer_wp++;
+        buffer_wp %= BUFFER_SIZE;
       }
-      msg.dlc = RxHeader2.DLC;
-      memcpy(msg.data, RxData2, RxHeader2.DLC);
-      rx_msg_buffer2[buffer_wp2] = msg;
-      buffer_wp2++;
-      buffer_wp2 %= BUFFER_SIZE;
     }
   }
 }
@@ -1211,7 +1553,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   /* USER CODE BEGIN Callback 0 */
 
   /* USER CODE END Callback 0 */
-  if (htim->Instance == TIM10) {
+  if (htim->Instance == TIM10)
+  {
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
@@ -1219,25 +1562,23 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   {
     // 10msec Timer
     timer10msec_counter++;
+    timer10msec_flag = 1;
 
     // 10sec conter
     if (timer10msec_counter % 1000 == 0)
     {
-      timer10sec_counter++;
       timer10sec_flag = 1;
     }
 
     // 1sec conter
     if (timer10msec_counter % 100 == 0)
     {
-      timer1sec_counter++;
-      timer1sec_flag = 100;
+      timer1sec_flag = 1;
     }
 
     // 100msec counter
     if (timer10msec_counter % 10 == 0)
     {
-      timer100msec_counter++;
       timer100msec_flag = 1;
     }
   }
@@ -1256,7 +1597,7 @@ void Error_Handler(void)
   /* USER CODE END Error_Handler_Debug */
 }
 
-#ifdef  USE_FULL_ASSERT
+#ifdef USE_FULL_ASSERT
 /**
   * @brief  Reports the name of the source file and the source line number
   *         where the assert_param error has occurred.
@@ -1265,7 +1606,7 @@ void Error_Handler(void)
   * @retval None
   */
 void assert_failed(uint8_t *file, uint32_t line)
-{ 
+{
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
      tex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
