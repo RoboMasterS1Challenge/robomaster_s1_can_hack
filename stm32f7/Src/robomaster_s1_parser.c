@@ -35,7 +35,7 @@ int parseCanData(uint16_t id, uint8_t* in_data, uint8_t in_data_size, uint8_t ou
   // Search Header
   int find_flag = 0;
   for(i = 0; i < can_in_buffer_size - 7; i++){
-    if(robomas_buffer[id][(robomas_buffer_rp[id]+i)%BUFFER_SIZE]==0x55 && robomas_buffer[id][(robomas_buffer_rp[id] +i +2)%BUFFER_SIZE]==0x04){
+    if(robomas_buffer[id][(robomas_buffer_rp[id])%BUFFER_SIZE]==0x55 && robomas_buffer[id][(robomas_buffer_rp[id]+2)%BUFFER_SIZE]==0x04){
       find_flag = 1;
       break;
     }
@@ -117,7 +117,7 @@ int parseUsbData(uint8_t* in_data, uint8_t in_data_size, uint8_t out_data[], uin
   // Search Header
   int find_flag = 0;
   for(i = 0; i < usb_in_buffer_size - 7; i++){
-    if(command_buffer[(command_buffer_rp+i)%BUFFER_SIZE]==0x55 && command_buffer[(command_buffer_rp +i +2)%BUFFER_SIZE]==0x04){
+    if(command_buffer[(command_buffer_rp)%BUFFER_SIZE]==0x55 && command_buffer[(command_buffer_rp+2)%BUFFER_SIZE]==0x04){
       find_flag = 1;
       break;
     }
