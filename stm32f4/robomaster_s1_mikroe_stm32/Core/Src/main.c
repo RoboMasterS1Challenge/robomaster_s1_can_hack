@@ -1586,9 +1586,9 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 168-1;
+  htim2.Init.Prescaler = 84-1;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 1000000;
+  htim2.Init.Period = 10000;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -1955,7 +1955,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     HAL_IncTick();
   }
   /* USER CODE BEGIN Callback 1 */
-  if (htim == &htim2)
+  if (htim->Instance == TIM2)
   {
     // 10msec Timer
     timer10msec_counter++;
@@ -1971,12 +1971,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     if (timer10msec_counter % 100 == 0)
     {
       timer1sec_flag = 1;
+      HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_12);
     }
 
     // 100msec counter
     if (timer10msec_counter % 10 == 0)
     {
       timer100msec_flag = 1;
+      HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
     }
   }
   /* USER CODE END Callback 1 */
