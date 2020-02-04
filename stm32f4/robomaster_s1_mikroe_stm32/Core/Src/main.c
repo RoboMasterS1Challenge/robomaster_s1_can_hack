@@ -799,14 +799,18 @@ int main(void)
       buffer_rp %= BUFFER_SIZE;
       if (ret)
       {
-        //sendUdpData(msg.can_id, received_data, received_data_size);
-
-        char *out_str;
-        char *num_str;
-
         float_uint8 base_odom_yaw_raw[5];
         float_uint8 quaternion[5];
         uint32_t base_odom_yaw;
+
+        uint8_t usb_send_data[255];
+        usb_send_data[0] = 0x55;
+        usb_send_data[1] = 0x00;
+        usb_send_data[2] = 0x04;
+        usb_send_data[3] = 0x00;
+        //appendCRC8CheckSum(usb_send_data, 4);
+        usb_send_data[4] = 0x00; // Command Number
+        //appendCRC16CheckSum(usb_send_data, 19);
 
         switch (msg.can_id)
         {
@@ -855,6 +859,28 @@ int main(void)
             base_odom_yaw_raw[4].uint8_data[1] = received_data[52];
             base_odom_yaw_raw[4].uint8_data[2] = received_data[53];
             base_odom_yaw_raw[4].uint8_data[3] = received_data[54];
+
+
+            // USB send data
+            usb_send_data[1] = 31;
+            appendCRC8CheckSum(usb_send_data, 4);
+            usb_send_data[4] = 0x01; // Command Number
+            float_uint8 base_odom_yaw_float_uint8;
+            base_odom_yaw_float_uint8.float_data = base_odom_yaw;
+            usb_send_data[5] = base_odom_yaw_float_uint8.uint8_data[0];
+            usb_send_data[6] = base_odom_yaw_float_uint8.uint8_data[1];
+            usb_send_data[7] = base_odom_yaw_float_uint8.uint8_data[2];
+            usb_send_data[8] = base_odom_yaw_float_uint8.uint8_data[3];
+            int idx = 9;
+            for(int i=35;i<55;i++)
+            {
+            	usb_send_data[idx] = received_data[i];
+            	idx++;
+            }
+            usb_send_data[29] = 0;
+            usb_send_data[30] = 0;
+            appendCRC16CheckSum(usb_send_data, 31);
+
           }
 
           if (received_data[1] == 0x31 && received_data[4] == 0x03 && received_data[5] == 0x04)
@@ -892,6 +918,21 @@ int main(void)
             int_data2 = (int32_t)uint32_data;
 
             uint8_t battery_soc = received_data[45];
+
+
+            // USB send data
+            usb_send_data[1] = 23;
+            appendCRC8CheckSum(usb_send_data, 4);
+            usb_send_data[4] = 0x02; // Command Number
+            int idx = 5;
+            for(int i=21;i<37;i++)
+            {
+            	usb_send_data[idx] = received_data[i];
+            	idx++;
+            }
+            usb_send_data[21] = 0;
+            usb_send_data[22] = 0;
+            appendCRC16CheckSum(usb_send_data, 23);
           }
 
           // Counter
@@ -1078,6 +1119,35 @@ int main(void)
             union_data.uint8_data[2] = received_data[55 + 4 * 13];
             union_data.uint8_data[3] = received_data[56 + 4 * 13];
             roll = union_data.float_data;
+
+
+            // USB send data
+            usb_send_data[1] = 91;
+            appendCRC8CheckSum(usb_send_data, 4);
+            usb_send_data[4] = 0x03; // Command Number
+            int idx = 5;
+            for(int i=21;i<37;i++)
+            {
+            	usb_send_data[idx] = received_data[i];
+            	idx++;
+            }
+
+            idx = 21;
+            for(int i=37;i<53;i++)
+            {
+            	usb_send_data[idx] = received_data[i];
+            	idx++;
+            }
+
+            idx = 37;
+            for(int i=57;i<109;i++)
+            {
+            	usb_send_data[idx] = received_data[i];
+            	idx++;
+            }
+            usb_send_data[89] = 0;
+            usb_send_data[90] = 0;
+            appendCRC16CheckSum(usb_send_data, 91);
           }
 
           break;
@@ -1098,6 +1168,26 @@ int main(void)
             gimbal_map_yaw_angle = -(int16_t)(data) / 100.0;
 
             //printf("%lf, %lf\n",gimbal_base_yaw_angle_,gimbal_map_yaw_angle_);
+
+            // USB send data
+            usb_send_data[1] = 15;
+            appendCRC8CheckSum(usb_send_data, 4);
+            usb_send_data[4] = 0x03; // Command Number
+            float_uint8 gimbal_base_yaw_angle_float_uint8;
+            float_uint8 gimbal_map_yaw_angle_float_uint8;
+            gimbal_base_yaw_angle_float_uint8.float_data = gimbal_base_yaw_angle;
+            usb_send_data[5] = gimbal_base_yaw_angle_float_uint8.uint8_data[0];
+            usb_send_data[6] = gimbal_base_yaw_angle_float_uint8.uint8_data[1];
+            usb_send_data[7] = gimbal_base_yaw_angle_float_uint8.uint8_data[2];
+            usb_send_data[8] = gimbal_base_yaw_angle_float_uint8.uint8_data[3];
+            gimbal_map_yaw_angle_float_uint8.float_data = gimbal_map_yaw_angle;
+            usb_send_data[9] = gimbal_map_yaw_angle_float_uint8.uint8_data[0];
+            usb_send_data[10] = gimbal_map_yaw_angle_float_uint8.uint8_data[1];
+            usb_send_data[11] = gimbal_map_yaw_angle_float_uint8.uint8_data[2];
+            usb_send_data[12] = gimbal_map_yaw_angle_float_uint8.uint8_data[3];
+            usb_send_data[13] = 0;
+            usb_send_data[14] = 0;
+            appendCRC16CheckSum(usb_send_data, 15);
           }
           if (received_data[1] == 0x16 && received_data[4] == 0x04 && received_data[5] == 0x09)
           {
@@ -1113,6 +1203,27 @@ int main(void)
             data = (data << 8) | received_data[15];
             gimbal_base_pitch_angle = (int32_t)(data) / 20000000.0 * 30.0;
             //printf("%lf, %lf\n", gimbal_map_pitch_angle_, gimbal_base_pitch_angle_);
+
+
+            // USB send data
+            usb_send_data[1] = 15;
+            appendCRC8CheckSum(usb_send_data, 4);
+            usb_send_data[4] = 0x03; // Command Number
+            float_uint8 gimbal_base_pitch_angle_float_uint8;
+            float_uint8 gimbal_map_pitch_angle_float_uint8;
+            gimbal_base_pitch_angle_float_uint8.float_data = gimbal_map_pitch_angle;
+            usb_send_data[5] = gimbal_base_pitch_angle_float_uint8.uint8_data[0];
+            usb_send_data[6] = gimbal_base_pitch_angle_float_uint8.uint8_data[1];
+            usb_send_data[7] = gimbal_base_pitch_angle_float_uint8.uint8_data[2];
+            usb_send_data[8] = gimbal_base_pitch_angle_float_uint8.uint8_data[3];
+            gimbal_map_pitch_angle_float_uint8.float_data = gimbal_map_pitch_angle;
+            usb_send_data[9] = gimbal_map_pitch_angle_float_uint8.uint8_data[0];
+            usb_send_data[10] = gimbal_map_pitch_angle_float_uint8.uint8_data[1];
+            usb_send_data[11] = gimbal_map_pitch_angle_float_uint8.uint8_data[2];
+            usb_send_data[12] = gimbal_map_pitch_angle_float_uint8.uint8_data[3];
+            usb_send_data[13] = 0;
+            usb_send_data[14] = 0;
+            appendCRC16CheckSum(usb_send_data, 15);
           }
           break;
         }
@@ -1127,9 +1238,10 @@ int main(void)
           break;
         }
 
-        // while (CDC_Transmit_FS((uint8_t *)received_data, received_data_size) == USBD_BUSY)
-        // {
-        // }
+        if(usb_send_data[4] != 0x00){ // Command Number
+          //while (
+          CDC_Transmit_FS((uint8_t *)usb_send_data, usb_send_data[1]);// == USBD_BUSY)
+        }
         break;
       }
     }

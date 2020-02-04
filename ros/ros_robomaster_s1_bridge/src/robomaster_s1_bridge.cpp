@@ -6,22 +6,22 @@
 #include <fcntl.h>
 #include <termios.h>
 
-int fd;
+int fd_;
 
 int open_serial(const char *device_name)
 {
-  int fd = open(device_name, O_RDWR | O_NOCTTY | O_NONBLOCK);
+  int fd_ = open(device_name, O_RDWR | O_NOCTTY | O_NONBLOCK);
 
   struct termios options;
-  tcgetattr(fd, &options);
+  tcgetattr(fd_, &options);
   options.c_cflag = B1000000 /*B115200*/ | CS8 | CLOCAL | CREAD;
   options.c_iflag = IGNPAR | ICRNL;
   options.c_oflag = 0;
   options.c_lflag = 0;
   cfmakeraw(&options);
-  tcflush(fd, TCIFLUSH);
-  tcsetattr(fd, TCSANOW, &options);
-  return fd;
+  tcflush(fd_, TCIFLUSH);
+  tcsetattr(fd_, TCSANOW, &options);
+  return fd_;
 }
 
 // RoboMasterS1Bridge()
@@ -38,7 +38,7 @@ RoboMasterS1Bridge::RoboMasterS1Bridge()
   robomaster_s1_bridge_tx_info_pub_ = nh_.advertise<ros_robomaster_s1_bridge::RoboMasterS1Info>("/robomaster_s1/robomaster_s1_info", 10);
 
   char device_name[] = "/dev/ttyACM0";
-  fd = open_serial(device_name);
+  fd_ = open_serial(device_name);
 
   // Parameters
   pnh_.param("debug_print", debug_print_, (int)0);
@@ -68,19 +68,22 @@ RoboMasterS1Bridge::RoboMasterS1Bridge()
   //   receive_thread_list_.emplace_back(std::thread([this, i]() { this->udpReceiveThread(i); }));
   //   ROS_INFO("Start %d receive thread", i);
   // }
+
+
+  timer = nh_.createTimer(ros::Duration(0.001), &RoboMasterS1Bridge::timer_callback, this);
 } //RoboMasterS1Bridge()
 
 // ~RoboMasterS1Bridge()
 // Destructor
 RoboMasterS1Bridge::~RoboMasterS1Bridge()
 {
-  for (int32_t i = 0; i < CAN_ID_NUM; ++i)
-  {
-    receive_thread_list_[i].join();
-    delete udp_receive_[i];
-  }
-  delete udp_send_;
-  close(fd);
+  // for (int32_t i = 0; i < CAN_ID_NUM; ++i)
+  // {
+  //   receive_thread_list_[i].join();
+  //   delete udp_receive_[i];
+  // }
+  // delete udp_send_;
+  close(fd_);
 } //~RoboMasterS1Bridge()
 
 void RoboMasterS1Bridge::twistCommandCallback(const geometry_msgs::Twist::ConstPtr &twist_command)
@@ -117,7 +120,7 @@ void RoboMasterS1Bridge::twistCommandCallback(const geometry_msgs::Twist::ConstP
   //   ROS_WARN_DELAYED_THROTTLE(10, "Send packet");
   // }
 
-  int ret = write(fd, send_data, 19);
+  int ret = write(fd_, send_data, 19);
   if (ret < 0)
   {
     ROS_ERROR("Serial Fail: cound not write");
@@ -148,7 +151,7 @@ void RoboMasterS1Bridge::joyCommandCallback(const sensor_msgs::Joy::ConstPtr &jo
     // {
     //   ROS_WARN_DELAYED_THROTTLE(10, "Send packet");
     // }
-    int ret = write(fd, send_data, 8);
+    int ret = write(fd_, send_data, 8);
     if (ret < 0)
     {
       ROS_ERROR("Serial Fail: cound not write");
@@ -180,7 +183,7 @@ void RoboMasterS1Bridge::ledCommandCallback(const std_msgs::ColorRGBA::ConstPtr 
   // {
   //   ROS_WARN_DELAYED_THROTTLE(10, "Send packet");
   // }
-  int ret = write(fd, send_data, 10);
+  int ret = write(fd_, send_data, 10);
   //ROS_INFO("0x%2X,0x%2X,0x%2X,0x%2X", send_data[0], send_data[1], send_data[2], send_data[3]);
   if (ret < 0)
   {
@@ -209,7 +212,7 @@ void RoboMasterS1Bridge::loseCommandCallback(const std_msgs::Bool::ConstPtr &los
   // {
   //   ROS_WARN_DELAYED_THROTTLE(10, "Send packet");
   // }
-  int ret = write(fd, send_data, 8);
+  int ret = write(fd_, send_data, 8);
   if (ret < 0)
   {
     ROS_ERROR("Serial Fail: cound not write");
@@ -384,6 +387,105 @@ void RoboMasterS1Bridge::loseCommandCallback(const std_msgs::Bool::ConstPtr &los
 //     }
 //   }
 // }
+
+int RoboMasterS1Bridge::parseUsbData(uint8_t* in_data, uint8_t in_data_size, uint8_t out_data[], uint8_t* out_data_size)
+{
+  int i;
+
+  for(int i=0;i<in_data_size;i++){
+    command_buffer_[command_buffer_wp_] = in_data[i];
+    command_buffer_wp_++;
+    command_buffer_wp_ %= BUFFER_SIZE;
+  }
+
+  int usb_in_buffer_size = (command_buffer_wp_ - command_buffer_rp_ + BUFFER_SIZE) % BUFFER_SIZE;
+
+  // Data size check
+  if(usb_in_buffer_size < 7){
+    return 0;
+  }
+
+  // Search Header
+  int find_flag = 0;
+  for(i = 0; i < usb_in_buffer_size - 7; i++){
+    if(command_buffer_[(command_buffer_rp_)%BUFFER_SIZE]==0x55 && command_buffer_[(command_buffer_rp_+2)%BUFFER_SIZE]==0x04){
+      find_flag = 1;
+      break;
+    }
+    command_buffer_rp_ ++;
+    command_buffer_rp_ %= BUFFER_SIZE;
+    usb_in_buffer_size --;
+  }
+
+  if(find_flag == 0){
+    return 0;
+  }
+
+  // Check data length
+  int send_data_size = command_buffer_[(command_buffer_rp_+1)%BUFFER_SIZE];
+  if(send_data_size > usb_in_buffer_size)
+  {
+    // Not enough data
+    return 0;
+  }
+
+  // Prepare send data
+  uint8_t* send_data;
+  send_data = (uint8_t*)malloc(sizeof(uint8_t) * send_data_size);
+
+
+  for(i = 0; i < send_data_size; i++){
+    int buffer_p = (command_buffer_rp_ + i) % BUFFER_SIZE;
+    send_data[i] = command_buffer_[buffer_p];
+  }
+
+  // Check header crc8
+  if(!verifyCRC8CheckSum(send_data, 4))
+  {
+    // checksum error
+    // skip header
+    command_buffer_rp_++;
+    command_buffer_rp_ %= BUFFER_SIZE;
+    free(send_data);
+    return 0;
+  }
+
+  // Check crc16
+  if(!verifyCRC16CheckSum(send_data, send_data_size))
+  {
+    // checksum error
+    // skip header
+    command_buffer_rp_++;
+    command_buffer_rp_ %= BUFFER_SIZE;
+    free(send_data);
+    return 0;
+  }
+
+  memcpy(out_data, send_data, send_data_size);
+  *out_data_size = send_data_size;
+
+  free(send_data);
+  command_buffer_rp_ += send_data_size;
+  command_buffer_rp_ %= BUFFER_SIZE;
+  return 1;
+}
+
+
+void RoboMasterS1Bridge::timer_callback(const ros::TimerEvent &)
+{
+  uint8_t buf[BUFFER_SIZE];
+  uint8_t parsed_command[255];
+  uint8_t parsed_command_size;
+  
+  int recv_data_size = read(fd_, buf, sizeof(buf));
+  if (recv_data_size > 0)
+  {
+    if(parseUsbData(buf, recv_data_size, parsed_command, &parsed_command_size))
+    {
+      ROS_INFO("0x%2X, 0x%2X, 0x%2X, 0x%2X",parsed_command[0],parsed_command[1],parsed_command[2],parsed_command[3]);
+    }
+  }
+}
 
 int32_t main(int32_t argc, char **argv)
 {
