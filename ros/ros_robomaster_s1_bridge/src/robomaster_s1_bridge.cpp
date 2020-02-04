@@ -68,7 +68,8 @@ RoboMasterS1Bridge::RoboMasterS1Bridge()
   //   receive_thread_list_.emplace_back(std::thread([this, i]() { this->udpReceiveThread(i); }));
   //   ROS_INFO("Start %d receive thread", i);
   // }
-
+  command_buffer_rp_ = 0;
+  command_buffer_wp_ = 0;
 
   timer = nh_.createTimer(ros::Duration(0.001), &RoboMasterS1Bridge::timer_callback, this);
 } //RoboMasterS1Bridge()
@@ -473,16 +474,21 @@ int RoboMasterS1Bridge::parseUsbData(uint8_t* in_data, uint8_t in_data_size, uin
 
 void RoboMasterS1Bridge::timer_callback(const ros::TimerEvent &)
 {
-  uint8_t buf[BUFFER_SIZE];
+  uint8_t buf[255];
   uint8_t parsed_command[255];
   uint8_t parsed_command_size;
   
   int recv_data_size = read(fd_, buf, sizeof(buf));
   if (recv_data_size > 0)
   {
-    if(parseUsbData(buf, recv_data_size, parsed_command, &parsed_command_size))
+    //for(int i=0;i<buf[1];i++){
+    //  printf("0x%02X,",buf[i]);
+    //}
+    //printf(",%d - %d\n",command_buffer_rp_,command_buffer_wp_);
+     while(parseUsbData(buf, recv_data_size, parsed_command, &parsed_command_size))
     {
-      ROS_INFO("0x%2X, 0x%2X, 0x%2X, 0x%2X",parsed_command[0],parsed_command[1],parsed_command[2],parsed_command[3]);
+      recv_data_size = 0;
+      ROS_INFO("0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X",parsed_command[0],parsed_command[1],parsed_command[2],parsed_command[3],parsed_command[4]);
     }
   }
 }
