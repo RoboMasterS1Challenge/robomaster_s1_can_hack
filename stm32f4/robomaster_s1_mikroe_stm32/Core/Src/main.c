@@ -104,6 +104,7 @@ volatile uint32_t timer100msec_counter;
 
 volatile int initial_task_flag;
 
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -261,6 +262,8 @@ int main(void)
 
   counter_blaster = 0;
   counter_led = 0;
+
+  uint8_t usb_command_counter[10];
 
   timer10sec_flag = 0;
   timer10sec_counter = 0;
@@ -862,24 +865,26 @@ int main(void)
 
 
             // USB send data
-            usb_send_data[1] = 31;
+            usb_send_data[1] = 32;
             appendCRC8CheckSum(usb_send_data, 4);
             usb_send_data[4] = 0x01; // Command Number
+            usb_send_data[5] = usb_command_counter[usb_send_data[4] - 1]; // Command Counter
+            usb_command_counter[usb_send_data[4] - 1]++;
             float_uint8 base_odom_yaw_float_uint8;
             base_odom_yaw_float_uint8.float_data = base_odom_yaw;
-            usb_send_data[5] = base_odom_yaw_float_uint8.uint8_data[0];
-            usb_send_data[6] = base_odom_yaw_float_uint8.uint8_data[1];
-            usb_send_data[7] = base_odom_yaw_float_uint8.uint8_data[2];
-            usb_send_data[8] = base_odom_yaw_float_uint8.uint8_data[3];
-            int idx = 9;
+            usb_send_data[6] = base_odom_yaw_float_uint8.uint8_data[0];
+            usb_send_data[7] = base_odom_yaw_float_uint8.uint8_data[1];
+            usb_send_data[8] = base_odom_yaw_float_uint8.uint8_data[2];
+            usb_send_data[9] = base_odom_yaw_float_uint8.uint8_data[3];
+            int idx = 10;
             for(int i=35;i<55;i++)
             {
             	usb_send_data[idx] = received_data[i];
             	idx++;
             }
-            usb_send_data[29] = 0;
             usb_send_data[30] = 0;
-            appendCRC16CheckSum(usb_send_data, 31);
+            usb_send_data[31] = 0;
+            appendCRC16CheckSum(usb_send_data, 32);
 
           }
 
@@ -921,18 +926,21 @@ int main(void)
 
 
             // USB send data
-            usb_send_data[1] = 23;
+            usb_send_data[1] = 33;
             appendCRC8CheckSum(usb_send_data, 4);
             usb_send_data[4] = 0x02; // Command Number
-            int idx = 5;
-            for(int i=21;i<37;i++)
+            usb_send_data[5] = usb_command_counter[usb_send_data[4] - 1]; // Command Counter
+            usb_command_counter[usb_send_data[4] - 1]++;
+            int idx = 6;
+            for(int i=21;i<45;i++)
             {
             	usb_send_data[idx] = received_data[i];
             	idx++;
             }
-            usb_send_data[21] = 0;
-            usb_send_data[22] = 0;
-            appendCRC16CheckSum(usb_send_data, 23);
+            usb_send_data[30] = battery_soc;
+            usb_send_data[31] = 0;
+            usb_send_data[32] = 0;
+            appendCRC16CheckSum(usb_send_data, 33);
           }
 
           // Counter
@@ -1013,31 +1021,31 @@ int main(void)
             int_data16 = (int16_t)data16;
             wheel_angle[3] = int_data16 / 32767.0 * 180.0;
 
-            int32_t m_bus_update_count[4];
+            uint32_t m_bus_update_count[4];
             // wheel update count
             data = received_data[40];
             data = (data << 8) | received_data[39];
             data = (data << 8) | received_data[38];
             data = (data << 8) | received_data[37];
-            m_bus_update_count[0] = (int32_t)data;
+            m_bus_update_count[0] = (uint32_t)data;
 
             data = received_data[44];
             data = (data << 8) | received_data[43];
             data = (data << 8) | received_data[42];
             data = (data << 8) | received_data[41];
-            m_bus_update_count[1] = (int32_t)data;
+            m_bus_update_count[1] = (uint32_t)data;
 
             data = received_data[48];
             data = (data << 8) | received_data[47];
             data = (data << 8) | received_data[46];
             data = (data << 8) | received_data[45];
-            m_bus_update_count[2] = (int32_t)data;
+            m_bus_update_count[2] = (uint32_t)data;
 
             data = received_data[52];
             data = (data << 8) | received_data[51];
             data = (data << 8) | received_data[50];
             data = (data << 8) | received_data[49];
-            m_bus_update_count[3] = (int32_t)data;
+            m_bus_update_count[3] = (uint32_t)data;
 
             // IMU Data
             float_uint8 union_data;
@@ -1122,32 +1130,34 @@ int main(void)
 
 
             // USB send data
-            usb_send_data[1] = 91;
+            usb_send_data[1] = 92;
             appendCRC8CheckSum(usb_send_data, 4);
             usb_send_data[4] = 0x03; // Command Number
-            int idx = 5;
+            usb_send_data[5] = usb_command_counter[usb_send_data[4] - 1]; // Command Counter
+            usb_command_counter[usb_send_data[4] - 1]++;
+            int idx = 6;
             for(int i=21;i<37;i++)
             {
             	usb_send_data[idx] = received_data[i];
             	idx++;
             }
 
-            idx = 21;
+            idx = 22;
             for(int i=37;i<53;i++)
             {
             	usb_send_data[idx] = received_data[i];
             	idx++;
             }
 
-            idx = 37;
+            idx = 38;
             for(int i=57;i<109;i++)
             {
             	usb_send_data[idx] = received_data[i];
             	idx++;
             }
-            usb_send_data[89] = 0;
             usb_send_data[90] = 0;
-            appendCRC16CheckSum(usb_send_data, 91);
+            usb_send_data[91] = 0;
+            appendCRC16CheckSum(usb_send_data, 92);
           }
 
           break;
@@ -1170,24 +1180,26 @@ int main(void)
             //printf("%lf, %lf\n",gimbal_base_yaw_angle_,gimbal_map_yaw_angle_);
 
             // USB send data
-            usb_send_data[1] = 15;
+            usb_send_data[1] = 16;
             appendCRC8CheckSum(usb_send_data, 4);
-            usb_send_data[4] = 0x03; // Command Number
+            usb_send_data[4] = 0x04; // Command Number
+            usb_send_data[5] = usb_command_counter[usb_send_data[4] - 1]; // Command Counter
+            usb_command_counter[usb_send_data[4] - 1]++;
             float_uint8 gimbal_base_yaw_angle_float_uint8;
             float_uint8 gimbal_map_yaw_angle_float_uint8;
             gimbal_base_yaw_angle_float_uint8.float_data = gimbal_base_yaw_angle;
-            usb_send_data[5] = gimbal_base_yaw_angle_float_uint8.uint8_data[0];
-            usb_send_data[6] = gimbal_base_yaw_angle_float_uint8.uint8_data[1];
-            usb_send_data[7] = gimbal_base_yaw_angle_float_uint8.uint8_data[2];
-            usb_send_data[8] = gimbal_base_yaw_angle_float_uint8.uint8_data[3];
+            usb_send_data[6] = gimbal_base_yaw_angle_float_uint8.uint8_data[0];
+            usb_send_data[7] = gimbal_base_yaw_angle_float_uint8.uint8_data[1];
+            usb_send_data[8] = gimbal_base_yaw_angle_float_uint8.uint8_data[2];
+            usb_send_data[9] = gimbal_base_yaw_angle_float_uint8.uint8_data[3];
             gimbal_map_yaw_angle_float_uint8.float_data = gimbal_map_yaw_angle;
-            usb_send_data[9] = gimbal_map_yaw_angle_float_uint8.uint8_data[0];
-            usb_send_data[10] = gimbal_map_yaw_angle_float_uint8.uint8_data[1];
-            usb_send_data[11] = gimbal_map_yaw_angle_float_uint8.uint8_data[2];
-            usb_send_data[12] = gimbal_map_yaw_angle_float_uint8.uint8_data[3];
-            usb_send_data[13] = 0;
+            usb_send_data[10] = gimbal_map_yaw_angle_float_uint8.uint8_data[0];
+            usb_send_data[11] = gimbal_map_yaw_angle_float_uint8.uint8_data[1];
+            usb_send_data[12] = gimbal_map_yaw_angle_float_uint8.uint8_data[2];
+            usb_send_data[13] = gimbal_map_yaw_angle_float_uint8.uint8_data[3];
             usb_send_data[14] = 0;
-            appendCRC16CheckSum(usb_send_data, 15);
+            usb_send_data[15] = 0;
+            appendCRC16CheckSum(usb_send_data, 16);
           }
           if (received_data[1] == 0x16 && received_data[4] == 0x04 && received_data[5] == 0x09)
           {
@@ -1206,24 +1218,26 @@ int main(void)
 
 
             // USB send data
-            usb_send_data[1] = 15;
+            usb_send_data[1] = 16;
             appendCRC8CheckSum(usb_send_data, 4);
-            usb_send_data[4] = 0x03; // Command Number
+            usb_send_data[4] = 0x05; // Command Number
+            usb_send_data[5] = usb_command_counter[usb_send_data[4] - 1]; // Command Counter
+            usb_command_counter[usb_send_data[4] - 1]++;
             float_uint8 gimbal_base_pitch_angle_float_uint8;
             float_uint8 gimbal_map_pitch_angle_float_uint8;
             gimbal_base_pitch_angle_float_uint8.float_data = gimbal_map_pitch_angle;
-            usb_send_data[5] = gimbal_base_pitch_angle_float_uint8.uint8_data[0];
-            usb_send_data[6] = gimbal_base_pitch_angle_float_uint8.uint8_data[1];
-            usb_send_data[7] = gimbal_base_pitch_angle_float_uint8.uint8_data[2];
-            usb_send_data[8] = gimbal_base_pitch_angle_float_uint8.uint8_data[3];
+            usb_send_data[6] = gimbal_base_pitch_angle_float_uint8.uint8_data[0];
+            usb_send_data[7] = gimbal_base_pitch_angle_float_uint8.uint8_data[1];
+            usb_send_data[8] = gimbal_base_pitch_angle_float_uint8.uint8_data[2];
+            usb_send_data[9] = gimbal_base_pitch_angle_float_uint8.uint8_data[3];
             gimbal_map_pitch_angle_float_uint8.float_data = gimbal_map_pitch_angle;
-            usb_send_data[9] = gimbal_map_pitch_angle_float_uint8.uint8_data[0];
-            usb_send_data[10] = gimbal_map_pitch_angle_float_uint8.uint8_data[1];
-            usb_send_data[11] = gimbal_map_pitch_angle_float_uint8.uint8_data[2];
-            usb_send_data[12] = gimbal_map_pitch_angle_float_uint8.uint8_data[3];
-            usb_send_data[13] = 0;
+            usb_send_data[10] = gimbal_map_pitch_angle_float_uint8.uint8_data[0];
+            usb_send_data[11] = gimbal_map_pitch_angle_float_uint8.uint8_data[1];
+            usb_send_data[12] = gimbal_map_pitch_angle_float_uint8.uint8_data[2];
+            usb_send_data[13] = gimbal_map_pitch_angle_float_uint8.uint8_data[3];
             usb_send_data[14] = 0;
-            appendCRC16CheckSum(usb_send_data, 15);
+            usb_send_data[15] = 0;
+            appendCRC16CheckSum(usb_send_data, 16);
           }
           break;
         }

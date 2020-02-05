@@ -1,0 +1,4 @@
+float64 blaster_base_yaw
+float64 blaster_map_yaw
+float64 blaster_base_pitch
+float64 blaster_map_pitch

@@ -12,12 +12,18 @@ find_package(catkin REQUIRED COMPONENTS
 
 add_message_files(
   FILES
-  RoboMasterS1Info.msg
+  RoboMasterS1Info1.msg
+  RoboMasterS1Info2.msg
+  RoboMasterS1Info3.msg
+  RoboMasterS1Info4.msg
+  RoboMasterS1Info5.msg
 )
 
 generate_messages(
   DEPENDENCIES
   std_msgs
+  geometry_msgs
+  sensor_msgs
 )
 
 catkin_package(

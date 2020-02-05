@@ -1,10 +1,13 @@
 #include "robomaster_s1_bridge.h"
-#include "std_msgs/String.h"
 
 #include <string>
 #include <unistd.h>
 #include <fcntl.h>
 #include <termios.h>
+typedef union float_uint8 {
+  float float_data;
+  uint8_t uint8_data[4];
+} float_uint8;
 
 int fd_;
 
@@ -30,45 +33,25 @@ RoboMasterS1Bridge::RoboMasterS1Bridge()
     : nh_(""), pnh_("~")
 {
   // ROS
-  robomaster_s1_bridge_rx_sub_ = nh_.subscribe("/robomaster_s1/cmd_vel", 10, &RoboMasterS1Bridge::twistCommandCallback, this);
-  robomaster_s1_bridge_rx_joy_sub_ = nh_.subscribe("/joy", 10, &RoboMasterS1Bridge::joyCommandCallback, this);
-  robomaster_s1_bridge_rx_led_sub_ = nh_.subscribe("/robomaster_s1/led", 10, &RoboMasterS1Bridge::ledCommandCallback, this);
-  robomaster_s1_bridge_rx_lose_sub_ = nh_.subscribe("/robomaster_s1/lose", 10, &RoboMasterS1Bridge::loseCommandCallback, this);
-  robomaster_s1_bridge_tx_debug_pub_ = nh_.advertise<std_msgs::UInt8MultiArray>("/robomaster_s1/debug_info", 10);
-  robomaster_s1_bridge_tx_info_pub_ = nh_.advertise<ros_robomaster_s1_bridge::RoboMasterS1Info>("/robomaster_s1/robomaster_s1_info", 10);
+  robomaster_s1_bridge_rx_sub_ = nh_.subscribe("/robomaster_s1/cmd_vel", 1, &RoboMasterS1Bridge::twistCommandCallback, this);
+  robomaster_s1_bridge_rx_joy_sub_ = nh_.subscribe("/joy", 1, &RoboMasterS1Bridge::joyCommandCallback, this);
+  robomaster_s1_bridge_rx_led_sub_ = nh_.subscribe("/robomaster_s1/led", 1, &RoboMasterS1Bridge::ledCommandCallback, this);
+  robomaster_s1_bridge_rx_lose_sub_ = nh_.subscribe("/robomaster_s1/lose", 1, &RoboMasterS1Bridge::loseCommandCallback, this);
+  robomaster_s1_bridge_tx_debug_pub_ = nh_.advertise<std_msgs::UInt8MultiArray>("/robomaster_s1/debug_info", 1);
+  robomaster_s1_bridge_tx_info1_pub_ = nh_.advertise<ros_robomaster_s1_bridge::RoboMasterS1Info1>("/robomaster_s1/robomaster_s1_info1", 1);
+  robomaster_s1_bridge_tx_info2_pub_ = nh_.advertise<ros_robomaster_s1_bridge::RoboMasterS1Info2>("/robomaster_s1/robomaster_s1_info2", 1);
+  robomaster_s1_bridge_tx_info3_pub_ = nh_.advertise<ros_robomaster_s1_bridge::RoboMasterS1Info3>("/robomaster_s1/robomaster_s1_info3", 1);
+  robomaster_s1_bridge_tx_info4_pub_ = nh_.advertise<ros_robomaster_s1_bridge::RoboMasterS1Info4>("/robomaster_s1/robomaster_s1_info4", 1);
+  robomaster_s1_bridge_tx_info5_pub_ = nh_.advertise<ros_robomaster_s1_bridge::RoboMasterS1Info5>("/robomaster_s1/robomaster_s1_info5", 1);
 
   char device_name[] = "/dev/ttyACM0";
   fd_ = open_serial(device_name);
 
   // Parameters
   pnh_.param("debug_print", debug_print_, (int)0);
-  // pnh_.param("ip_address", ip_address_, std::string("192.168.0.255"));
 
-  // receive_port_list_[0] = 0x201 + 10000;
-  // receive_port_list_[1] = 0x202 + 10000;
-  // receive_port_list_[2] = 0x203 + 10000;
-  // receive_port_list_[3] = 0x204 + 10000;
-  // receive_port_list_[4] = 0x211 + 10000;
-  // receive_port_list_[5] = 0x212 + 10000;
-  // receive_port_list_[6] = 0x213 + 10000;
-  // receive_port_list_[7] = 0x214 + 10000;
-  // receive_port_list_[8] = 0x215 + 10000;
-  // receive_port_list_[9] = 0x216 + 10000;
-  // send_port_ = 0x200 + 10000;
-
-  // udp_send_ = new broadcast_udp_send(ip_address_, send_port_);
-
-  // for (int32_t i = 0; i < CAN_ID_NUM; ++i)
-  // {
-  //   // UDP Receive
-  //   udp_receive_.emplace_back(new broadcast_udp_receive(receive_port_list_[i]));
-  //   udp_receive_[i]->udp_bind();
-
-  //   // Make receive thread
-  //   receive_thread_list_.emplace_back(std::thread([this, i]() { this->udpReceiveThread(i); }));
-  //   ROS_INFO("Start %d receive thread", i);
-  // }
-
+  command_buffer_rp_ = 0;
+  command_buffer_wp_ = 0;
 
   timer = nh_.createTimer(ros::Duration(0.001), &RoboMasterS1Bridge::timer_callback, this);
 } //RoboMasterS1Bridge()
@@ -77,18 +60,12 @@ RoboMasterS1Bridge::RoboMasterS1Bridge()
 // Destructor
 RoboMasterS1Bridge::~RoboMasterS1Bridge()
 {
-  // for (int32_t i = 0; i < CAN_ID_NUM; ++i)
-  // {
-  //   receive_thread_list_[i].join();
-  //   delete udp_receive_[i];
-  // }
-  // delete udp_send_;
   close(fd_);
 } //~RoboMasterS1Bridge()
 
 void RoboMasterS1Bridge::twistCommandCallback(const geometry_msgs::Twist::ConstPtr &twist_command)
 {
-  // UDP Send
+  // Send
   uint8_t send_data[19];
   send_data[0] = 0x55;
   send_data[1] = 0x13;
@@ -111,14 +88,6 @@ void RoboMasterS1Bridge::twistCommandCallback(const geometry_msgs::Twist::ConstP
   send_data[17] = 0x00;
   send_data[18] = 0x00;
   appendCRC16CheckSum(send_data, 19);
-  // if (udp_send_->udp_send(send_data, 19) == -1)
-  // {
-  //   ROS_WARN("Cannot send packet");
-  // }
-  // else
-  // {
-  //   ROS_WARN_DELAYED_THROTTLE(10, "Send packet");
-  // }
 
   int ret = write(fd_, send_data, 19);
   if (ret < 0)
@@ -131,7 +100,7 @@ void RoboMasterS1Bridge::joyCommandCallback(const sensor_msgs::Joy::ConstPtr &jo
 {
   if (joy_command->buttons[11] == 1)
   {
-    // UDP Send
+    // Send
     uint8_t send_data[8];
     send_data[0] = 0x55;
     send_data[1] = 0x08;
@@ -143,14 +112,7 @@ void RoboMasterS1Bridge::joyCommandCallback(const sensor_msgs::Joy::ConstPtr &jo
     send_data[6] = 0x00;
     send_data[7] = 0x00;
     appendCRC16CheckSum(send_data, 8);
-    // if (udp_send_->udp_send(send_data, 8) == -1)
-    // {
-    //   ROS_WARN("Cannot send packet");
-    // }
-    // else
-    // {
-    //   ROS_WARN_DELAYED_THROTTLE(10, "Send packet");
-    // }
+
     int ret = write(fd_, send_data, 8);
     if (ret < 0)
     {
@@ -161,7 +123,7 @@ void RoboMasterS1Bridge::joyCommandCallback(const sensor_msgs::Joy::ConstPtr &jo
 
 void RoboMasterS1Bridge::ledCommandCallback(const std_msgs::ColorRGBA::ConstPtr &led_command)
 {
-  // UDP Send
+  // Send
   uint8_t send_data[10];
   send_data[0] = 0x55;
   send_data[1] = 0x0A;
@@ -175,14 +137,7 @@ void RoboMasterS1Bridge::ledCommandCallback(const std_msgs::ColorRGBA::ConstPtr 
   send_data[8] = 0x00;
   send_data[9] = 0x00;
   appendCRC16CheckSum(send_data, 10);
-  // if (udp_send_->udp_send(send_data, 10) == -1)
-  // {
-  //   ROS_WARN("Cannot send packet");
-  // }
-  // else
-  // {
-  //   ROS_WARN_DELAYED_THROTTLE(10, "Send packet");
-  // }
+
   int ret = write(fd_, send_data, 10);
   //ROS_INFO("0x%2X,0x%2X,0x%2X,0x%2X", send_data[0], send_data[1], send_data[2], send_data[3]);
   if (ret < 0)
@@ -192,7 +147,7 @@ void RoboMasterS1Bridge::ledCommandCallback(const std_msgs::ColorRGBA::ConstPtr 
 }
 void RoboMasterS1Bridge::loseCommandCallback(const std_msgs::Bool::ConstPtr &lose_command)
 {
-  // UDP Send
+  // Send
   uint8_t send_data[8];
   send_data[0] = 0x55;
   send_data[1] = 0x08;
@@ -204,14 +159,7 @@ void RoboMasterS1Bridge::loseCommandCallback(const std_msgs::Bool::ConstPtr &los
   send_data[6] = 0x00;
   send_data[7] = 0x00;
   appendCRC16CheckSum(send_data, 8);
-  // if (udp_send_->udp_send(send_data, 8) == -1)
-  // {
-  //   ROS_WARN("Cannot send packet");
-  // }
-  // else
-  // {
-  //   ROS_WARN_DELAYED_THROTTLE(10, "Send packet");
-  // }
+
   int ret = write(fd_, send_data, 8);
   if (ret < 0)
   {
@@ -219,180 +167,12 @@ void RoboMasterS1Bridge::loseCommandCallback(const std_msgs::Bool::ConstPtr &los
   }
 }
 
-// void RoboMasterS1Bridge::udpReceiveThread(uint8_t can_id_num)
-// {
-//   while (ros::ok())
-//   {
-//     uint8_t buf[BUFFER_MAX];
-//     memset(buf, 0, sizeof(buf));
-//     int recv_msglen = udp_receive_[can_id_num]->udp_recv(buf, sizeof(buf));
-//     std_msgs::UInt8MultiArray debug_data;
-
-//     ros_robomaster_s1_bridge::RoboMasterS1Info robomaster_s1_info;
-//     switch (can_id_num)
-//     {
-//     case 0: //0x201
-//       if (buf[4] == 0x09 && (buf[5] == 0x17 || buf[5] == 0x18))
-//       {
-//         for (int i = 0; i < recv_msglen; i++)
-//         {
-//           debug_data.data.emplace_back(buf[i]);
-//           if (debug_print_)
-//           {
-//             printf("0x%02X,", buf[i]);
-//           }
-//         }
-//         if (debug_print_)
-//         {
-//           printf("\r");
-//           printf("\n");
-//           robomaster_s1_bridge_tx_debug_pub_.publish(debug_data);
-//         }
-//       }
-//       break;
-//     case 1: //0x202
-//       // From Motion Controller
-//       if (buf[1] == 0x3D && buf[4] == 0x03 && buf[5] == 0x09)
-//       {
-//         int flag = (buf[24] >> 7) & 0x01;
-//         base_odom_yaw_ = ((((uint16_t)buf[24]) << 8) | (((uint16_t)buf[23]) << 0));
-//         if (flag == 0)
-//         {
-//           int shift = (0x86 - ((buf[24] << 1) | (buf[23] >> 7)));
-//           base_odom_yaw_ = ((1 << 7) | buf[23]) >> shift;
-//           base_odom_yaw_ *= -1;
-//         }
-//         else
-//         {
-//           int shift = (0x186 - ((buf[24] << 1) | (buf[23] >> 7)));
-//           base_odom_yaw_ = ((1 << 7) | buf[23]) >> shift;
-//         }
-//         if (buf[24] == 0 && buf[23] == 0)
-//         {
-//           base_odom_yaw_ = 0;
-//         }
-
-//         uint32_t data = buf[38];
-//         data = (data << 8) | buf[37];
-//         data = (data << 8) | buf[36];
-//         data = (data << 8) | buf[35];
-//         base_odom_yaw_raw_[0] = (int32_t)(data);
-//         data = buf[42];
-//         data = (data << 8) | buf[41];
-//         data = (data << 8) | buf[40];
-//         data = (data << 8) | buf[39];
-//         base_odom_yaw_raw_[1] = (int32_t)(data);
-//         data = buf[50];
-//         data = (data << 8) | buf[49];
-//         data = (data << 8) | buf[48];
-//         data = (data << 8) | buf[47];
-//         base_odom_yaw_raw_[2] = (int32_t)(data);
-//         data = buf[54];
-//         data = (data << 8) | buf[53];
-//         data = (data << 8) | buf[52];
-//         data = (data << 8) | buf[51];
-//         base_odom_yaw_raw_[3] = (int32_t)(data);
-//         //printf("%d, %d, %d, %d\n",base_odom_yaw_raw_[0],base_odom_yaw_raw_[1],base_odom_yaw_raw_[2],base_odom_yaw_raw_[3]);
-//       }
-//       if (buf[1] == 0x31 && buf[4] == 0x03 && buf[5] == 0x04)
-//       {
-//         uint32_t data = buf[24];
-//         data = (data << 8) | buf[23];
-//         data = (data << 8) | buf[22];
-//         data = (data << 8) | buf[21];
-//         wheel_odom_[0] = (int32_t)(data);
-//         data = buf[28];
-//         data = (data << 8) | buf[27];
-//         data = (data << 8) | buf[26];
-//         data = (data << 8) | buf[25];
-//         wheel_odom_[1] = (int32_t)(data);
-//         data = buf[32];
-//         data = (data << 8) | buf[31];
-//         data = (data << 8) | buf[30];
-//         data = (data << 8) | buf[29];
-//         wheel_odom_[2] = (int32_t)(data);
-//         data = buf[36];
-//         data = (data << 8) | buf[35];
-//         data = (data << 8) | buf[34];
-//         data = (data << 8) | buf[33];
-//         wheel_odom_[3] = (int32_t)(data);
-//         data = buf[40];
-//         data = (data << 8) | buf[39];
-//         data = (data << 8) | buf[38];
-//         data = (data << 8) | buf[37];
-//         wheel_odom_[4] = (int32_t)(data);
-//         data = buf[44];
-//         data = (data << 8) | buf[43];
-//         data = (data << 8) | buf[42];
-//         data = (data << 8) | buf[41];
-//         wheel_odom_[5] = (int32_t)(data);
-//         //printf("%d, %d, %d, %d, %d\n",wheel_odom_[0],wheel_odom_[1],wheel_odom_[2],wheel_odom_[3],wheel_odom_[4]);
-//       }
-//       break;
-//     case 2: //0x203
-//       // From Blaster Gimbal
-//       if (buf[1] == 0x11 && buf[4] == 0x04 && buf[5] == 0x03)
-//       {
-//         // Yaw Angle
-//         uint16_t data = buf[12];
-//         data = (data << 8) | buf[11];
-//         blaster_base_yaw_angle_ = -(int16_t)(data) / 10.0;
-//         data = buf[14];
-//         data = (data << 8) | buf[13];
-//         blaster_map_yaw_angle_ = -(int16_t)(data) / 100.0;
-
-//         //printf("%lf, %lf\n",blaster_base_yaw_angle_,blaster_map_yaw_angle_);
-//       }
-//       if (buf[1] == 0x16 && buf[4] == 0x04 && buf[5] == 0x09)
-//       {
-//         // Pitch Angle
-//         uint32_t data = buf[14];
-//         data = (data << 8) | buf[13];
-//         data = (data << 8) | buf[12];
-//         data = (data << 8) | buf[11];
-//         blaster_map_pitch_angle_ = (int32_t)(data) / 20000000.0 * 30.0;
-//         data = buf[18];
-//         data = (data << 8) | buf[17];
-//         data = (data << 8) | buf[16];
-//         data = (data << 8) | buf[15];
-//         blaster_base_pitch_angle_ = (int32_t)(data) / 20000000.0 * 30.0;
-//         //printf("%lf, %lf\n", blaster_map_pitch_angle_, blaster_base_pitch_angle_);
-//       }
-//       robomaster_s1_info.blaster_base_yaw = blaster_base_yaw_angle_;
-//       robomaster_s1_info.blaster_map_yaw = blaster_map_yaw_angle_;
-//       robomaster_s1_info.blaster_base_pitch = blaster_base_pitch_angle_;
-//       robomaster_s1_info.blaster_map_pitch = blaster_map_pitch_angle_;
-//       robomaster_s1_bridge_tx_info_pub_.publish(robomaster_s1_info);
-//       break;
-//     case 3: //0x204
-//       if (buf[4] == 0x17 && buf[5] == 0x09)
-//       {
-//         for (int i = 0; i < recv_msglen; i++)
-//         {
-//           debug_data.data.emplace_back(buf[i]);
-//           if (debug_print_)
-//           {
-//             printf("0x%02X,", buf[i]);
-//           }
-//         }
-//         if (debug_print_)
-//         {
-//           printf("\r");
-//           printf("\n");
-//         }
-//       }
-//       break;
-//     default:
-//       break;
-//     }
-//   }
-// }
-
-int RoboMasterS1Bridge::parseUsbData(uint8_t* in_data, uint8_t in_data_size, uint8_t out_data[], uint8_t* out_data_size)
+int RoboMasterS1Bridge::parseUsbData(uint8_t *in_data, uint8_t in_data_size, uint8_t out_data[], uint8_t *out_data_size)
 {
   int i;
 
-  for(int i=0;i<in_data_size;i++){
+  for (int i = 0; i < in_data_size; i++)
+  {
     command_buffer_[command_buffer_wp_] = in_data[i];
     command_buffer_wp_++;
     command_buffer_wp_ %= BUFFER_SIZE;
@@ -401,46 +181,50 @@ int RoboMasterS1Bridge::parseUsbData(uint8_t* in_data, uint8_t in_data_size, uin
   int usb_in_buffer_size = (command_buffer_wp_ - command_buffer_rp_ + BUFFER_SIZE) % BUFFER_SIZE;
 
   // Data size check
-  if(usb_in_buffer_size < 7){
+  if (usb_in_buffer_size < 7)
+  {
     return 0;
   }
 
   // Search Header
   int find_flag = 0;
-  for(i = 0; i < usb_in_buffer_size - 7; i++){
-    if(command_buffer_[(command_buffer_rp_)%BUFFER_SIZE]==0x55 && command_buffer_[(command_buffer_rp_+2)%BUFFER_SIZE]==0x04){
+  for (i = 0; i < usb_in_buffer_size - 7; i++)
+  {
+    if (command_buffer_[(command_buffer_rp_) % BUFFER_SIZE] == 0x55 && command_buffer_[(command_buffer_rp_ + 2) % BUFFER_SIZE] == 0x04)
+    {
       find_flag = 1;
       break;
     }
-    command_buffer_rp_ ++;
+    command_buffer_rp_++;
     command_buffer_rp_ %= BUFFER_SIZE;
-    usb_in_buffer_size --;
+    usb_in_buffer_size--;
   }
 
-  if(find_flag == 0){
+  if (find_flag == 0)
+  {
     return 0;
   }
 
   // Check data length
-  int send_data_size = command_buffer_[(command_buffer_rp_+1)%BUFFER_SIZE];
-  if(send_data_size > usb_in_buffer_size)
+  int send_data_size = command_buffer_[(command_buffer_rp_ + 1) % BUFFER_SIZE];
+  if (send_data_size > usb_in_buffer_size)
   {
     // Not enough data
     return 0;
   }
 
   // Prepare send data
-  uint8_t* send_data;
-  send_data = (uint8_t*)malloc(sizeof(uint8_t) * send_data_size);
+  uint8_t *send_data;
+  send_data = (uint8_t *)malloc(sizeof(uint8_t) * send_data_size);
 
-
-  for(i = 0; i < send_data_size; i++){
+  for (i = 0; i < send_data_size; i++)
+  {
     int buffer_p = (command_buffer_rp_ + i) % BUFFER_SIZE;
     send_data[i] = command_buffer_[buffer_p];
   }
 
   // Check header crc8
-  if(!verifyCRC8CheckSum(send_data, 4))
+  if (!verifyCRC8CheckSum(send_data, 4))
   {
     // checksum error
     // skip header
@@ -451,7 +235,7 @@ int RoboMasterS1Bridge::parseUsbData(uint8_t* in_data, uint8_t in_data_size, uin
   }
 
   // Check crc16
-  if(!verifyCRC16CheckSum(send_data, send_data_size))
+  if (!verifyCRC16CheckSum(send_data, send_data_size))
   {
     // checksum error
     // skip header
@@ -470,19 +254,182 @@ int RoboMasterS1Bridge::parseUsbData(uint8_t* in_data, uint8_t in_data_size, uin
   return 1;
 }
 
-
 void RoboMasterS1Bridge::timer_callback(const ros::TimerEvent &)
 {
-  uint8_t buf[BUFFER_SIZE];
+  uint8_t buf[255];
   uint8_t parsed_command[255];
   uint8_t parsed_command_size;
-  
+
   int recv_data_size = read(fd_, buf, sizeof(buf));
   if (recv_data_size > 0)
   {
-    if(parseUsbData(buf, recv_data_size, parsed_command, &parsed_command_size))
+    //for(int i=0;i<buf[1];i++){
+    //  printf("0x%02X,",buf[i]);
+    //}
+    //printf(",%d - %d\n",command_buffer_rp_,command_buffer_wp_);
+    while (parseUsbData(buf, recv_data_size, parsed_command, &parsed_command_size))
     {
-      ROS_INFO("0x%2X, 0x%2X, 0x%2X, 0x%2X",parsed_command[0],parsed_command[1],parsed_command[2],parsed_command[3]);
+      recv_data_size = 0;
+      ROS_INFO("0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02d", parsed_command[0], parsed_command[1], parsed_command[2], parsed_command[3], parsed_command[4], parsed_command[5]);
+
+      if (verifyCRC8CheckSum(parsed_command, 4) &&
+          verifyCRC16CheckSum(parsed_command, parsed_command[1]))
+      {
+        ros_robomaster_s1_bridge::RoboMasterS1Info1 info1;
+        ros_robomaster_s1_bridge::RoboMasterS1Info2 info2;
+        ros_robomaster_s1_bridge::RoboMasterS1Info3 info3;
+        ros_robomaster_s1_bridge::RoboMasterS1Info4 info4;
+        ros_robomaster_s1_bridge::RoboMasterS1Info5 info5;
+        uint32_t uint32_data;
+        switch (parsed_command[4])
+        {
+        case 1:
+          info1.seq = parsed_command[5]; // Command Counter
+          float_uint8 base_yaw_float_uint8;
+          base_yaw_float_uint8.uint8_data[0] = parsed_command[6];
+          base_yaw_float_uint8.uint8_data[1] = parsed_command[7];
+          base_yaw_float_uint8.uint8_data[2] = parsed_command[8];
+          base_yaw_float_uint8.uint8_data[3] = parsed_command[9];
+          info1.motion_base_yaw = base_yaw_float_uint8.float_data;
+
+          float_uint8 unknown_data[5];
+
+          for(int i=0; i < 5; i++){
+            unknown_data[i].uint8_data[0] = parsed_command[10 + i * 4];
+            unknown_data[i].uint8_data[1] = parsed_command[11 + i * 4];
+            unknown_data[i].uint8_data[2] = parsed_command[12 + i * 4];
+            unknown_data[i].uint8_data[3] = parsed_command[13 + i * 4];
+            info1.unknown_data.push_back(base_yaw_float_uint8.float_data);
+          }
+          robomaster_s1_bridge_tx_info1_pub_.publish(info1);
+          break;
+        case 2:
+          info2.seq = parsed_command[5]; // Command Counter
+          float_uint8 orientation[4];
+          for(int i=0; i < 4; i++){
+            orientation[i].uint8_data[0] = parsed_command[6 + i * 4];
+            orientation[i].uint8_data[1] = parsed_command[7 + i * 4];
+            orientation[i].uint8_data[2] = parsed_command[8 + i * 4];
+            orientation[i].uint8_data[3] = parsed_command[9 + i * 4];
+          }
+          info2.orientation.x = orientation[0].float_data;
+          info2.orientation.y = orientation[1].float_data;
+          info2.orientation.z = orientation[2].float_data;
+          info2.orientation.w = orientation[3].float_data;
+
+          int32_t int_data1;
+          uint32_data = parsed_command[25];
+          uint32_data = (uint32_data << 8) | parsed_command[24];
+          uint32_data = (uint32_data << 8) | parsed_command[23];
+          uint32_data = (uint32_data << 8) | parsed_command[22];
+          int_data1 = (int32_t)uint32_data;
+          info2.unknown_data.push_back(int_data1);
+
+          int32_t int_data2;
+          uint32_data = parsed_command[29];
+          uint32_data = (uint32_data << 8) | parsed_command[28];
+          uint32_data = (uint32_data << 8) | parsed_command[27];
+          uint32_data = (uint32_data << 8) | parsed_command[26];
+          int_data2 = (int32_t)uint32_data;
+          info2.unknown_data.push_back(int_data2);
+
+          info2.battery_soc = parsed_command[30];
+
+          robomaster_s1_bridge_tx_info2_pub_.publish(info2);
+          break;
+        case 3:
+          info3.seq = parsed_command[5]; // Command Counter
+
+            // Unit is RPM
+          for(int i=0; i < 4; i++){
+            uint16_t data16 = parsed_command[7 + i * 2];
+            data16 = (data16 << 8) | parsed_command[6 + i * 2];
+            info3.wheel_angular_velocity.push_back((int16_t)data16);
+          }
+          for(int i=0; i < 4; i++){
+            uint16_t data16 = parsed_command[15 + i * 2];
+            data16 = (data16 << 8) | parsed_command[14 + i * 2];
+            data16 = data16 << 1;
+            int16_t int_data16 = (int16_t)data16;
+            info3.wheel_angle.push_back(int_data16 / 32767.0 * 180.0);
+          }
+          for(int i=0; i < 4; i++){
+            uint32_t data32 = parsed_command[25 + i * 4];
+            data32 = (data32 << 8) | parsed_command[24 + i * 4];
+            data32 = (data32 << 8) | parsed_command[23 + i * 4];
+            data32 = (data32 << 8) | parsed_command[22 + i * 4];
+            info3.m_bus_update_count.push_back(data32);
+          }
+
+          float_uint8 mag_data;
+          mag_data.uint8_data[0] = parsed_command[38];
+          mag_data.uint8_data[1] = parsed_command[39];
+          mag_data.uint8_data[2] = parsed_command[40];
+          mag_data.uint8_data[3] = parsed_command[41];
+          info3.imu_mag_xy.x = mag_data.float_data;
+          mag_data.uint8_data[0] = parsed_command[42];
+          mag_data.uint8_data[1] = parsed_command[43];
+          mag_data.uint8_data[2] = parsed_command[44];
+          mag_data.uint8_data[3] = parsed_command[45];
+          info3.imu_mag_xy.y = mag_data.float_data;
+
+          float_uint8 linear_acceleration_data;
+          linear_acceleration_data.uint8_data[0] = parsed_command[50];
+          linear_acceleration_data.uint8_data[1] = parsed_command[51];
+          linear_acceleration_data.uint8_data[2] = parsed_command[52];
+          linear_acceleration_data.uint8_data[3] = parsed_command[53];
+          info3.imu_linear_acceleration.x = linear_acceleration_data.float_data;
+          linear_acceleration_data.uint8_data[0] = parsed_command[54];
+          linear_acceleration_data.uint8_data[1] = parsed_command[55];
+          linear_acceleration_data.uint8_data[2] = parsed_command[56];
+          linear_acceleration_data.uint8_data[3] = parsed_command[57];
+          info3.imu_linear_acceleration.y = linear_acceleration_data.float_data;
+          linear_acceleration_data.uint8_data[0] = parsed_command[58];
+          linear_acceleration_data.uint8_data[1] = parsed_command[59];
+          linear_acceleration_data.uint8_data[2] = parsed_command[60];
+          linear_acceleration_data.uint8_data[3] = parsed_command[61];
+          info3.imu_linear_acceleration.z = linear_acceleration_data.float_data;
+          
+          float_uint8 angular_velocity_data;
+          angular_velocity_data.uint8_data[0] = parsed_command[62];
+          angular_velocity_data.uint8_data[1] = parsed_command[63];
+          angular_velocity_data.uint8_data[2] = parsed_command[64];
+          angular_velocity_data.uint8_data[3] = parsed_command[65];
+          info3.imu_angular_velocity.x = angular_velocity_data.float_data;
+          angular_velocity_data.uint8_data[0] = parsed_command[66];
+          angular_velocity_data.uint8_data[1] = parsed_command[67];
+          angular_velocity_data.uint8_data[2] = parsed_command[68];
+          angular_velocity_data.uint8_data[3] = parsed_command[69];
+          info3.imu_angular_velocity.y = angular_velocity_data.float_data;
+          angular_velocity_data.uint8_data[0] = parsed_command[70];
+          angular_velocity_data.uint8_data[1] = parsed_command[71];
+          angular_velocity_data.uint8_data[2] = parsed_command[72];
+          angular_velocity_data.uint8_data[3] = parsed_command[73];
+          info3.imu_angular_velocity.z = angular_velocity_data.float_data;
+          
+          float_uint8 imu_rpy_data;
+          imu_rpy_data.uint8_data[0] = parsed_command[78];
+          imu_rpy_data.uint8_data[1] = parsed_command[79];
+          imu_rpy_data.uint8_data[2] = parsed_command[80];
+          imu_rpy_data.uint8_data[3] = parsed_command[81];
+          info3.imu_rpy.x = imu_rpy_data.float_data;
+          imu_rpy_data.uint8_data[0] = parsed_command[82];
+          imu_rpy_data.uint8_data[1] = parsed_command[83];
+          imu_rpy_data.uint8_data[2] = parsed_command[84];
+          imu_rpy_data.uint8_data[3] = parsed_command[85];
+          info3.imu_rpy.y = imu_rpy_data.float_data;
+          imu_rpy_data.uint8_data[0] = parsed_command[86];
+          imu_rpy_data.uint8_data[1] = parsed_command[87];
+          imu_rpy_data.uint8_data[2] = parsed_command[88];
+          imu_rpy_data.uint8_data[3] = parsed_command[89];
+          info3.imu_rpy.z = imu_rpy_data.float_data;
+
+          robomaster_s1_bridge_tx_info3_pub_.publish(info3);
+          break;
+        default:
+          break;
+        }
+      }
     }
   }
 }
