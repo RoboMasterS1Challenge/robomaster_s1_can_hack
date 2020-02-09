@@ -69,6 +69,9 @@ UART_HandleTypeDef huart1;
 const uint8_t can_command_list[COMMAND_LIST_SIZE][0x4B] = {
 #include "command_list.csv"
 };
+//const uint8_t init_command[] = {
+//#include "lab201.csv"
+//};
 volatile uint16_t command_counter[COMMAND_LIST_SIZE];
 volatile uint16_t counter_led;
 volatile uint16_t counter_blaster;
@@ -101,6 +104,7 @@ volatile uint8_t timer10msec_flag;
 volatile uint32_t timer10msec_counter;
 volatile uint8_t timer100msec_flag;
 volatile uint32_t timer100msec_counter;
+volatile uint8_t timer1msec_flag;
 
 volatile int initial_task_flag;
 
@@ -244,9 +248,7 @@ int main(void)
   uint8_t received_data_size = 0;
   int i = 0;
   int ret = 0;
-  uint8_t send_ip_addr[] = {192, 168, 0, 255};
 
-  double base_odom_yaw;
   double gimbal_base_yaw_angle;
   double gimbal_map_yaw_angle;
   double gimbal_base_pitch_angle;
@@ -265,6 +267,9 @@ int main(void)
 
   uint8_t usb_command_counter[10];
 
+  uint32_t initial_command_send_num = 0;
+  uint8_t initial_command_flag = 0;
+
   timer10sec_flag = 0;
   timer10sec_counter = 0;
   timer1sec_flag = 0;
@@ -279,11 +284,39 @@ int main(void)
   while (1)
   {
     // Initial Command 10sec after boot
-    if (initial_task_flag == 0)
+    if (initial_task_flag < 3)
     {
-      if (timer10sec_flag == 1)
+      if (timer1msec_flag == 1 && initial_command_flag == 0)
+      {
+    	timer1msec_flag = 0;
+    	/*for(int j= 0; j < 3;j++)
+    	{
+        if(init_command[initial_command_send_num] == 0x55 && initial_command_flag == 0)
+        {
+            if(init_command[initial_command_send_num+4] == 0x09 && init_command[initial_command_send_num+5] == 0x03 && init_command[initial_command_send_num+1] != 0x0E)
+            {
+        	uint8_t msg_num = init_command[initial_command_send_num+1];
+        	for(int i = 0; i < msg_num; i++)
+        	{
+                can_command_buffer[can_command_buffer_wp] = init_command[initial_command_send_num];
+                can_command_buffer_wp++;
+                can_command_buffer_wp %= BUFFER_SIZE;
+                initial_command_send_num++;
+        	}
+            }else{
+            	initial_command_send_num+=init_command[initial_command_send_num+1];
+            }
+        }
+        if(initial_command_send_num >= sizeof(init_command)){
+          initial_command_flag = 1;
+        }
+    	}*/initial_command_flag = 1;
+      }
+
+      if (timer100msec_flag == 1 && initial_command_flag == 1 && initial_task_flag == 0)
       {
         initial_task_flag = 1;
+        timer100msec_flag = 0;
 
         //boot command
         for (int command_no = 26; command_no < 35; command_no++)
@@ -310,10 +343,16 @@ int main(void)
             can_command_buffer_wp %= BUFFER_SIZE;
           }
         }
+      }
 
-        // LED on
+      if (timer100msec_flag == 1 && initial_command_flag == 1 && initial_task_flag == 1)
+      {
+        initial_task_flag = 2;
+        timer100msec_flag = 0;
+
+        // LED Flash
         {
-          uint8_t command_no = 11;
+          uint8_t command_no = 12;
           uint8_t header_command[0xFF];
           uint8_t idx = 0;
           uint8_t command_length = can_command_list[command_no][3];
@@ -382,38 +421,43 @@ int main(void)
 
           counter_mode++;
         }
+      }
+
+      if (timer100msec_flag == 1 && initial_command_flag == 1 && initial_task_flag == 2)
+      {
+        initial_task_flag = 3;
+        timer100msec_flag = 0;
 
         // Enable Odometry Output
         {
-          uint8_t command_no = 35;
-          uint8_t header_command[0xFF];
-          uint8_t idx = 0;
-          uint8_t command_length = can_command_list[command_no][3];
-          for (i = 2; i < command_length - 2; i++)
-          {
-            header_command[idx] = can_command_list[command_no][i];
-
-            if (i == 5 && can_command_list[command_no][5] == 0xFF)
+        	uint8_t command_no = 35;
+            uint8_t header_command[0xFF];
+            uint8_t idx = 0;
+            uint8_t command_length = can_command_list[command_no][3];
+            for (i = 2; i < command_length; i++)
             {
-              appendCRC8CheckSum(header_command, 4);
+              header_command[idx] = can_command_list[command_no][i];
+
+              if (i == 5 && can_command_list[command_no][5] == 0xFF)
+              {
+                appendCRC8CheckSum(header_command, 4);
+              }
+
+              idx++;
             }
-
-            idx++;
-          }
-          appendCRC16CheckSum(header_command, command_length);
-
-          for (int i = 0; i < command_length; i++)
-          {
-            can_command_buffer[can_command_buffer_wp] = header_command[i];
-            can_command_buffer_wp++;
-            can_command_buffer_wp %= BUFFER_SIZE;
-          }
+            appendCRC16CheckSum(header_command, command_length);
+            for (int i = 0; i < command_length; i++)
+            {
+              can_command_buffer[can_command_buffer_wp] = header_command[i];
+              can_command_buffer_wp++;
+              can_command_buffer_wp %= BUFFER_SIZE;
+            }
         }
       }
     }
 
     // After Initialize Command
-    if (initial_task_flag)
+    if (initial_task_flag == 3)
     {
 
       // 10msec TASK
@@ -789,6 +833,7 @@ int main(void)
       if (timer10sec_flag)
       {
         timer10sec_flag = 0;
+
       }
     }
 
@@ -871,7 +916,7 @@ int main(void)
             usb_send_data[5] = usb_command_counter[usb_send_data[4] - 1]; // Command Counter
             usb_command_counter[usb_send_data[4] - 1]++;
             float_uint8 base_odom_yaw_float_uint8;
-            base_odom_yaw_float_uint8.float_data = base_odom_yaw;
+            base_odom_yaw_float_uint8.float_data = (int32_t)base_odom_yaw;
             usb_send_data[6] = base_odom_yaw_float_uint8.uint8_data[0];
             usb_send_data[7] = base_odom_yaw_float_uint8.uint8_data[1];
             usb_send_data[8] = base_odom_yaw_float_uint8.uint8_data[2];
@@ -2083,6 +2128,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   /* USER CODE BEGIN Callback 1 */
   if (htim->Instance == TIM2)
   {
+	timer1msec_flag = 1;
     // 10msec Timer
     timer10msec_counter++;
     timer10msec_flag = 1;
