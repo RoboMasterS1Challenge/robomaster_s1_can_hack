@@ -444,7 +444,7 @@ void RoboMasterS1Bridge::timer_callback(const ros::TimerEvent &)
 
           break;
         case 5:
-          info4.seq = parsed_command[5]; // Command Counter
+          info5.seq = parsed_command[5]; // Command Counter
           float_uint8 gimbal_base_pitch_float_uint8;
           float_uint8 gimbal_map_pitch_float_uint8;
           gimbal_base_pitch_float_uint8.uint8_data[0] = parsed_command[6];
