@@ -1274,7 +1274,7 @@ int main(void)
             usb_command_counter[usb_send_data[4] - 1]++;
             float_uint8 gimbal_base_pitch_angle_float_uint8;
             float_uint8 gimbal_map_pitch_angle_float_uint8;
-            gimbal_base_pitch_angle_float_uint8.float_data = gimbal_map_pitch_angle;
+            gimbal_base_pitch_angle_float_uint8.float_data = gimbal_base_pitch_angle;
             usb_send_data[6] = gimbal_base_pitch_angle_float_uint8.uint8_data[0];
             usb_send_data[7] = gimbal_base_pitch_angle_float_uint8.uint8_data[1];
             usb_send_data[8] = gimbal_base_pitch_angle_float_uint8.uint8_data[2];
