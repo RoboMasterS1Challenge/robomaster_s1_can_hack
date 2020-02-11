@@ -270,7 +270,7 @@ void RoboMasterS1Bridge::timer_callback(const ros::TimerEvent &)
     while (parseUsbData(buf, recv_data_size, parsed_command, &parsed_command_size))
     {
       recv_data_size = 0;
-      ROS_INFO("0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02d", parsed_command[0], parsed_command[1], parsed_command[2], parsed_command[3], parsed_command[4], parsed_command[5]);
+      //ROS_INFO("0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02X, 0x%02d", parsed_command[0], parsed_command[1], parsed_command[2], parsed_command[3], parsed_command[4], parsed_command[5]);
 
       if (verifyCRC8CheckSum(parsed_command, 4) &&
           verifyCRC16CheckSum(parsed_command, parsed_command[1]))
@@ -285,12 +285,12 @@ void RoboMasterS1Bridge::timer_callback(const ros::TimerEvent &)
         {
         case 1:
           info1.seq = parsed_command[5]; // Command Counter
-          float_uint8 base_yaw_float_uint8;
-          base_yaw_float_uint8.uint8_data[0] = parsed_command[6];
-          base_yaw_float_uint8.uint8_data[1] = parsed_command[7];
-          base_yaw_float_uint8.uint8_data[2] = parsed_command[8];
-          base_yaw_float_uint8.uint8_data[3] = parsed_command[9];
-          info1.motion_base_yaw = base_yaw_float_uint8.float_data;
+          float_uint8 gimbal_yaw_float_uint8;
+          gimbal_yaw_float_uint8.uint8_data[0] = parsed_command[6];
+          gimbal_yaw_float_uint8.uint8_data[1] = parsed_command[7];
+          gimbal_yaw_float_uint8.uint8_data[2] = parsed_command[8];
+          gimbal_yaw_float_uint8.uint8_data[3] = parsed_command[9];
+          info1.motion_gimbal_yaw = gimbal_yaw_float_uint8.float_data;
 
           float_uint8 unknown_data[5];
 
@@ -299,7 +299,7 @@ void RoboMasterS1Bridge::timer_callback(const ros::TimerEvent &)
             unknown_data[i].uint8_data[1] = parsed_command[11 + i * 4];
             unknown_data[i].uint8_data[2] = parsed_command[12 + i * 4];
             unknown_data[i].uint8_data[3] = parsed_command[13 + i * 4];
-            info1.unknown_data.push_back(base_yaw_float_uint8.float_data);
+            info1.unknown_data.push_back(unknown_data[i].float_data);
           }
           robomaster_s1_bridge_tx_info1_pub_.publish(info1);
           break;
@@ -312,10 +312,10 @@ void RoboMasterS1Bridge::timer_callback(const ros::TimerEvent &)
             orientation[i].uint8_data[2] = parsed_command[8 + i * 4];
             orientation[i].uint8_data[3] = parsed_command[9 + i * 4];
           }
-          info2.orientation.x = orientation[0].float_data;
-          info2.orientation.y = orientation[1].float_data;
-          info2.orientation.z = orientation[2].float_data;
-          info2.orientation.w = orientation[3].float_data;
+          info2.orientation.w = orientation[0].float_data;
+          info2.orientation.x = orientation[1].float_data;
+          info2.orientation.y = orientation[2].float_data;
+          info2.orientation.z = orientation[3].float_data;
 
           int32_t int_data1;
           uint32_data = parsed_command[25];
@@ -340,7 +340,7 @@ void RoboMasterS1Bridge::timer_callback(const ros::TimerEvent &)
         case 3:
           info3.seq = parsed_command[5]; // Command Counter
 
-            // Unit is RPM
+          // Unit is RPM
           for(int i=0; i < 4; i++){
             uint16_t data16 = parsed_command[7 + i * 2];
             data16 = (data16 << 8) | parsed_command[6 + i * 2];
@@ -425,6 +425,40 @@ void RoboMasterS1Bridge::timer_callback(const ros::TimerEvent &)
           info3.imu_rpy.z = imu_rpy_data.float_data;
 
           robomaster_s1_bridge_tx_info3_pub_.publish(info3);
+          break;
+        case 4:
+          info4.seq = parsed_command[5]; // Command Counter
+          float_uint8 gimbal_base_yaw_float_uint8;
+          float_uint8 gimbal_map_yaw_float_uint8;
+          gimbal_base_yaw_float_uint8.uint8_data[0] = parsed_command[6];
+          gimbal_base_yaw_float_uint8.uint8_data[1] = parsed_command[7];
+          gimbal_base_yaw_float_uint8.uint8_data[2] = parsed_command[8];
+          gimbal_base_yaw_float_uint8.uint8_data[3] = parsed_command[9];
+          info4.gimbal_base_yaw = gimbal_base_yaw_float_uint8.float_data;
+          gimbal_map_yaw_float_uint8.uint8_data[0] = parsed_command[10];
+          gimbal_map_yaw_float_uint8.uint8_data[1] = parsed_command[11];
+          gimbal_map_yaw_float_uint8.uint8_data[2] = parsed_command[12];
+          gimbal_map_yaw_float_uint8.uint8_data[3] = parsed_command[13];
+          info4.gimbal_map_yaw = gimbal_map_yaw_float_uint8.float_data;
+          robomaster_s1_bridge_tx_info4_pub_.publish(info4);
+
+          break;
+        case 5:
+          info4.seq = parsed_command[5]; // Command Counter
+          float_uint8 gimbal_base_pitch_float_uint8;
+          float_uint8 gimbal_map_pitch_float_uint8;
+          gimbal_base_pitch_float_uint8.uint8_data[0] = parsed_command[6];
+          gimbal_base_pitch_float_uint8.uint8_data[1] = parsed_command[7];
+          gimbal_base_pitch_float_uint8.uint8_data[2] = parsed_command[8];
+          gimbal_base_pitch_float_uint8.uint8_data[3] = parsed_command[9];
+          info5.gimbal_base_pitch = gimbal_base_pitch_float_uint8.float_data;
+          gimbal_map_pitch_float_uint8.uint8_data[0] = parsed_command[10];
+          gimbal_map_pitch_float_uint8.uint8_data[1] = parsed_command[11];
+          gimbal_map_pitch_float_uint8.uint8_data[2] = parsed_command[12];
+          gimbal_map_pitch_float_uint8.uint8_data[3] = parsed_command[13];
+          info5.gimbal_map_pitch = gimbal_map_pitch_float_uint8.float_data;
+          robomaster_s1_bridge_tx_info5_pub_.publish(info5);
+
           break;
         default:
           break;
