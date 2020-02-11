@@ -36,7 +36,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define COMMAND_LIST_SIZE 42
+#define COMMAND_LIST_SIZE 38
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -69,9 +69,9 @@ UART_HandleTypeDef huart1;
 const uint8_t can_command_list[COMMAND_LIST_SIZE][0x4B] = {
 #include "command_list.csv"
 };
-const uint8_t init_command[] = {
-#include "lab201.csv"
-};
+//const uint8_t init_command[] = {
+//#include "lab201.csv"
+//};
 volatile uint16_t command_counter[COMMAND_LIST_SIZE];
 volatile uint16_t counter_led;
 volatile uint16_t counter_blaster;
@@ -289,6 +289,8 @@ int main(void)
       if (timer1msec_flag == 1 && initial_command_flag == 0)
       {
     	timer1msec_flag = 0;
+
+    	// TEST CODE
     	/*for(int j= 0; j < 3;j++)
     	{
         if(init_command[initial_command_send_num] == 0x55 && initial_command_flag == 0)
@@ -310,7 +312,8 @@ int main(void)
         if(initial_command_send_num >= sizeof(init_command)){
           initial_command_flag = 1;
         }
-    	}*/initial_command_flag = 1;
+    	}*/
+    	initial_command_flag = 1;
       }
 
       if (timer100msec_flag == 1 && initial_command_flag == 1 && initial_task_flag == 0)
@@ -429,8 +432,9 @@ int main(void)
         timer100msec_flag = 0;
 
         // Enable Odometry Output
-        for (int command_no = 35; command_no < 40; command_no++)
+        //for (int command_no = 35; command_no < 40; command_no++)
         {
+        	int command_no = 35;
             uint8_t header_command[0xFF];
             uint8_t idx = 0;
             uint8_t command_length = can_command_list[command_no][3];
@@ -469,7 +473,7 @@ int main(void)
         {
           command_lose = 0;
           // Lose command
-          int command_no = 40;
+          int command_no = 36;
 
           uint8_t header_command[0xFF];
           uint8_t idx = 0;
@@ -509,7 +513,7 @@ int main(void)
         {
           command_lose = 0;
           // Recover command
-          int command_no = 41;
+          int command_no = 37;
 
           uint8_t header_command[0xFF];
           uint8_t idx = 0;
