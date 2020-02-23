@@ -1,6 +1,6 @@
 # DJI RoboMaster S1 ROS Bridge Package
-##****This repository will migrate to the following repository soon!!! ****
-##https://github.com/RoboMasterS1Challenge/robomaster_s1_ros_reference_design
+****This repository will migrate to the following repository soon!!! ****
+https://github.com/RoboMasterS1Challenge/robomaster_s1_ros_reference_design
 
 This package contains a ROS node package and MINI-M4 STM32 firmware for controlling your RoboMaster S1 through the ROS network.
 
