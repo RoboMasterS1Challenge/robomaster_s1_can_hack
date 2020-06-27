@@ -7,6 +7,7 @@ This package contains a ROS node package and MINI-M4 STM32 firmware for controll
 
 ## What is this?
 You can control DJI RoboMaster S1 motion, LED, Blaster and some commands using ROS messages through ROS1 Network.
+Raspberry Pi 4B and stm32f4 microcontroller emulate Intelligent Controller of RoboMaster S1.
 
 ## Preparation
 You should prepare these items.
@@ -36,6 +37,5 @@ $ git clone --recursive https://github.com/tatsuyai713/robomaster_s1_can_hack.gi
 Please make symbolic link from "ros" folder to your ROS workspace.
 
 ## How to make controller board
-under construction...
-
+1. 
 
