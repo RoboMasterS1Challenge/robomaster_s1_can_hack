@@ -3,23 +3,21 @@
 https://github.com/RoboMasterS1Challenge/robomaster_s1_ros_reference_design
 
 This package contains a ROS node package and MINI-M4 STM32 firmware for controlling your RoboMaster S1 through the ROS network.
+(Nucleo-F767ZI Version is discontined.)
 
 ## What is this?
-You can control DJI RoboMaster S1 motion, LED, Blaster and buttle end command using ROS messages through the Network.
-
-![robomasters1](https://user-images.githubusercontent.com/34103899/65610530-75044200-dfec-11e9-9dfc-d46c963ab85a.JPG)
-It's old version.
+You can control DJI RoboMaster S1 motion, LED, Blaster and some commands using ROS messages through ROS1 Network.
 
 ## Preparation
 You should prepare these items.
 - DJI RoboMaster S1
-- Ubuntu PC for development (16.04 or 18.04 LTS and STM32CubeIDE)
+- Ubuntu PC with STM32CubeIDE
 - MINI-M4 STM32
-- Raspberry Pi (4 is recommended)
-- Universal board for Raspberry Pi 4
-- CAN Tranceiver breakout board (https://www.amazon.co.jp/dp/B076HHVZM1) 
-- Wire harnes
-- 2.54mm Socket and Pin etc.
+- Raspberry Pi 4B
+- Universal board for Raspberry Pi
+- CAN Tranceiver breakout board (Like this https://www.amazon.co.jp/dp/B076HHVZM1) 
+- Wire harnes, 2.54mm Socket and Pins etc.
+- DockerPi powerBoard (https://www.seeedstudio.com/DockerPi-PowerBoard-p-4100.html)
 - SONY PlayStation4(R) Controller
 
 ### PS4 Controller Key Map
